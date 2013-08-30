@@ -1,0 +1,8 @@
+#!/bin/sh
+set -e
+
+test -d vendor/ghc || ghc-pkg init vendor/ghc/package.conf.d
+
+mkdir -p bin
+cabal install --prefix=$PWD/vendor/ghc --symlink-bindir=$PWD/bin \
+    --package-db=$PWD/vendor/ghc/package.conf.d
