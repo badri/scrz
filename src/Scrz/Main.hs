@@ -19,17 +19,18 @@ import Control.Concurrent.STM
 
 import Network.Socket
 
-import Scrz.Log
-import Scrz.Types
-import Scrz.Network
-import Scrz.Container
-import Scrz.Image
-import Scrz.Socket
-import Scrz.Signal
 import Scrz.Commands
-import Scrz.Terminal
-import Scrz.Utils
+import Scrz.Container
 import Scrz.Http
+import Scrz.Image
+import Scrz.Log
+import Scrz.Network
+import Scrz.Proxy
+import Scrz.Signal
+import Scrz.Socket
+import Scrz.Terminal
+import Scrz.Types
+import Scrz.Utils
 
 withMaybe :: Maybe a -> (a -> IO ()) -> IO ()
 withMaybe Nothing  _ = return ()
@@ -176,6 +177,9 @@ run [ "destroy-container", id' ] = do
 run [ "start", id' ] = do
     void $ sendCommand $ Start id'
 
+run [ "stop", id' ] = do
+    void $ sendCommand $ StopContainer id'
+
 run [ "snapshot", container, image ] = do
     void $ sendCommand $ Snapshot container image
 
@@ -190,6 +194,27 @@ run [ "list-images" ] = do
     forM_ (M.toList images) $ \(_, image) -> do
         when ('.' /= head (imageId image)) $ do
             putStrLn $ imageId image
+
+run [ "ipvs", addr, url ] = do
+    runtime <- mkProxyRuntime addr
+
+    forever $ do
+        putStrLn "arst"
+        syncProxyConfig runtime `catch` \(e :: SomeException) -> do
+            logger $ "Syncing proxy config with remote authority failed: " ++ show e
+
+        threadDelay $ 10 * 1000 * 1000
+
+  where
+
+    syncProxyConfig runtime = do
+        fqdn' <- fullyQualifiedDomainName
+        withMaybe fqdn' $ \fqdn -> do
+            config' <- getJSON $ url ++ "/api/hosts/" ++ fqdn ++ "/proxy-config"
+            print config'
+            withMaybe config' $ \config -> do
+                mergeProxyConfig runtime config
+
 
 run [ "pack-image", id' ] = do
     image <- getImage id'
