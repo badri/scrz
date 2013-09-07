@@ -1,6 +1,6 @@
 module Scrz.Types where
 
-
+import Data.Aeson
 import Data.Char (chr)
 import Data.Maybe (isJust)
 import Data.List as L
@@ -9,6 +9,7 @@ import Data.Map as M
 import Data.Hashable
 import System.Process
 import Data.Word
+import Control.Applicative
 import Control.Concurrent.STM
 
 
@@ -17,6 +18,17 @@ data Image = Image
   , imageChecksum :: String
   , imageSize :: Int
   } deriving (Show, Eq)
+
+instance FromJSON Image where
+    parseJSON (Object o) = Image
+        <$> o .: "url"
+        <*> o .: "checksum"
+        <*> o .: "size"
+
+    parseJSON _ = fail "Image"
+
+instance ToJSON Image where
+    toJSON = undefined
 
 
 hashChar :: Int -> Char
@@ -48,6 +60,16 @@ data Port = Port
   --   to a specific port.
   } deriving (Show, Eq)
 
+instance FromJSON Port where
+    parseJSON (Object o) = Port
+        <$> o .: "internal"
+        <*> o .: "external"
+
+    parseJSON _ = fail "Port"
+
+instance ToJSON Port where
+    toJSON = undefined
+
 
 data Volume = Volume
   { volumePath :: String
@@ -57,6 +79,16 @@ data Volume = Volume
   -- ^ ID of the backing volume if one should be reused. If Nothing, then the
   --   supervisor creates a new backing volume.
   } deriving (Show, Eq)
+
+instance FromJSON Volume where
+    parseJSON (Object o) = Volume
+        <$> o .: "path"
+        <*> o .: "backing"
+
+    parseJSON _ = fail "Volume"
+
+instance ToJSON Volume where
+    toJSON = undefined
 
 
 data Service = Service
@@ -76,9 +108,32 @@ data Service = Service
   , serviceVolumes :: [ Volume ]
   } deriving (Show, Eq)
 
+instance FromJSON Service where
+    parseJSON (Object o) = Service
+        <$> o .: "id"
+        <*> o .: "revision"
+        <*> o .: "image"
+        <*> o .: "command"
+        <*> o .: "environment"
+        <*> o .: "ports"
+        <*> o .: "volumes"
+
+    parseJSON _ = fail "Service"
+
+instance ToJSON Service where
+    toJSON = undefined
+
+
 data Config = Config
   { configServices :: [ Service ]
   } deriving (Show, Eq)
+
+instance FromJSON Config where
+    parseJSON (Object o) = Config
+        <$> o .: "services"
+
+    parseJSON _ = fail "Config"
+
 
 data BackingVolume = AdHocVolume String | ManagedVolume
   { backingVolumeId :: String

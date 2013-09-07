@@ -1,5 +1,3 @@
-{-# OPTIONS_GHC -fno-warn-orphans #-}
-
 module Scrz.Commands where
 
 import Prelude hiding (id)
@@ -28,56 +26,6 @@ data Command
   | Snapshot String String
   | Run String [String] String [(String, String)]
   | Wait String
-
-
-instance FromJSON Service where
-    parseJSON (Object o) = Service
-        <$> o .: "id"
-        <*> o .: "revision"
-        <*> o .: "image"
-        <*> o .: "command"
-        <*> o .: "environment"
-        <*> o .: "ports"
-        <*> o .: "volumes"
-
-    parseJSON _ = fail "Service"
-
-instance FromJSON Image where
-    parseJSON (Object o) = Image
-        <$> o .: "id"
-        <*> o .: "checksum"
-        <*> o .: "size"
-    parseJSON _ = fail "Image"
-
-instance FromJSON Port where
-    parseJSON (Object o) = Port
-        <$> o .: "internal"
-        <*> o .: "external"
-    parseJSON _ = fail "Port"
-
-instance FromJSON Volume where
-    parseJSON (Object o) = Volume
-        <$> o .: "path"
-        <*> o .: "backing"
-    parseJSON _ = fail "Volume"
-
-instance FromJSON Config where
-    parseJSON (Object o) = Config
-        <$> o .: "services"
-
-    parseJSON _ = fail "Config"
-
-instance ToJSON Service where
-    toJSON = undefined
-
-instance ToJSON Image where
-    toJSON = undefined
-
-instance ToJSON Port where
-    toJSON = undefined
-
-instance ToJSON Volume where
-    toJSON = undefined
 
 
 instance FromJSON Command where
