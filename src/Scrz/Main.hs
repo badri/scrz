@@ -196,8 +196,7 @@ run [ "ipvs", addr, url ] = do
 
 
 run [ "pack-image", id' ] = do
-    image <- getImage id'
-    packImage image
+    packImage id'
 
 run ("run":args) = do
     let ra = parseRunArguments (RunArgs "" [] [] Nothing) args

@@ -18,15 +18,23 @@ import Scrz.Http
 baseImageDirectory :: String
 baseImageDirectory = "/srv/scrz/images"
 
+imageBasePathS :: String -> String
+imageBasePathS = (</>) baseImageDirectory
+
 imageBasePath :: Image -> String
-imageBasePath image = baseImageDirectory </> imageId image
+imageBasePath = imageBasePathS . imageId
+
+imageContentPathS :: String -> String
+imageContentPathS image = imageBasePathS image </> "content"
 
 imageContentPath :: Image -> String
-imageContentPath image = imageBasePath image </> "content"
+imageContentPath = imageContentPathS . imageId
+
+imageVolumePathS :: String -> String
+imageVolumePathS image = imageBasePathS image </> "volume"
 
 imageVolumePath :: Image -> String
-imageVolumePath image = imageBasePath image </> "volume"
-
+imageVolumePath = imageVolumePathS . imageId
 
 getImage :: String -> IO Image
 getImage id' = do
@@ -96,6 +104,6 @@ unpackImage image = do
     fatal =<< exec "tar" [ "-xf", imageContentPath image, "-C", imageVolumePath image ]
 
 
-packImage :: Image -> IO ()
+packImage :: String -> IO ()
 packImage image = do
-    fatal =<< exec "tar" [ "-czf", imageContentPath image, "-C", imageVolumePath image, "." ]
+    fatal =<< exec "tar" [ "-czf", imageContentPathS image, "-C", imageVolumePathS image, "." ]
