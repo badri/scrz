@@ -70,13 +70,6 @@ snapshotContainerImage container image = do
     volumePath' = imagePath ++ "/volume"
 
 
-imageUrl :: Authority -> Image -> String
-imageUrl Socket _ = error "Can not construct image url for socket authority"
-imageUrl Local  _ = error "Can not construct image url for local authority"
-imageUrl (Remote host) image =
-    host ++ "/api/images/" ++ (imageId image) ++ "/content"
-
-
 ensureImage :: Authority -> Image -> IO ()
 ensureImage Local image = do
     imageVolumeExists <- doesDirectoryExist $ imageVolumePath image
@@ -94,7 +87,7 @@ ensureImage authority image = do
 downloadImage :: Authority -> Image -> IO ()
 downloadImage authority image = do
     createDirectoryIfMissing True $ imageBasePath image
-    downloadBinary (imageUrl authority image) $ imageContentPath image
+    downloadBinary (imageUrl image) $ imageContentPath image
 
 
 unpackImage :: Image -> IO ()

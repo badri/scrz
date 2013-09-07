@@ -39,6 +39,7 @@ Executable scrz
     Build-depends:  base          >= 4.0     && < 5
     Build-depends:  bytestring    >= 0.10
     Build-depends:  conduit       >= 0
+    Build-depends:  hashable      >= 0
     Build-depends:  containers    >= 0
     Build-depends:  directory     >= 0
     Build-depends:  filepath      >= 0

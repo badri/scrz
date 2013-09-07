@@ -1,21 +1,42 @@
 module Scrz.Types where
 
 
+import Data.Char (chr)
 import Data.Maybe (isJust)
 import Data.List as L
 import Data.Set (Set)
 import Data.Map as M
+import Data.Hashable
 import System.Process
 import Data.Word
 import Control.Concurrent.STM
 
 
 data Image = Image
-  { imageId :: String
+  { imageUrl :: String
   , imageChecksum :: String
   , imageSize :: Int
   } deriving (Show, Eq)
 
+
+hashChar :: Int -> Char
+hashChar x
+    | x < 26 = chr ((x     ) + 65)
+    | x < 52 = chr ((x - 26) + 97)
+    | x < 62 = chr ((x - 52) + 48)
+    | otherwise = '-'
+
+hashString :: Int -> String
+hashString input
+    | input < 0 = []
+    | otherwise = hashChar b : hashString (a * b - 1)
+
+  where
+
+    (a, b) = divMod input 62
+
+imageId :: Image -> String
+imageId = take 13 . hashString . abs . hash . imageUrl
 
 data Port = Port
   { internalPort :: Int
