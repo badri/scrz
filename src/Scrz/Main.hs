@@ -74,6 +74,9 @@ createControlThread mvar runtime remoteAuthorityUrl = do
         services <- listServices
         mergeConfig runtime (Remote url) (Config services)
 
+        rt <- atomically $ readTVar runtime
+        updateRuntime rt
+
 
 mergeConfig :: TVar Runtime -> Authority -> Config -> IO ()
 mergeConfig runtime authority config = do

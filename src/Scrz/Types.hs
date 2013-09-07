@@ -1,5 +1,6 @@
 module Scrz.Types where
 
+import GHC.Generics (Generic)
 import Data.Aeson
 import Data.Char (chr)
 import Data.Maybe (isJust)
@@ -17,7 +18,9 @@ data Image = Image
   { imageUrl :: String
   , imageChecksum :: String
   , imageSize :: Int
-  } deriving (Show, Eq)
+  } deriving (Show, Eq, Generic)
+
+instance Hashable Image
 
 instance FromJSON Image where
     parseJSON (Object o) = Image
@@ -28,7 +31,7 @@ instance FromJSON Image where
     parseJSON _ = fail "Image"
 
 instance ToJSON Image where
-    toJSON = undefined
+    toJSON x = object []
 
 
 hashChar :: Int -> Char
@@ -48,7 +51,8 @@ hashString input
     (a, b) = divMod input 62
 
 imageId :: Image -> String
-imageId = take 13 . hashString . abs . hash . imageUrl
+imageId = take 13 . hashString . abs . hash
+
 
 data Port = Port
   { internalPort :: Int
@@ -68,7 +72,10 @@ instance FromJSON Port where
     parseJSON _ = fail "Port"
 
 instance ToJSON Port where
-    toJSON = undefined
+    toJSON Port{..} = object
+        [ "internal"  .= internalPort
+        , "external"  .= externalPort
+        ]
 
 
 data Volume = Volume
@@ -88,7 +95,7 @@ instance FromJSON Volume where
     parseJSON _ = fail "Volume"
 
 instance ToJSON Volume where
-    toJSON = undefined
+    toJSON = error "ToJSON Volume"
 
 
 data Service = Service
@@ -121,7 +128,10 @@ instance FromJSON Service where
     parseJSON _ = fail "Service"
 
 instance ToJSON Service where
-    toJSON = undefined
+    toJSON Service{..} = object
+        [ "id"        .= serviceId
+        , "revision"  .= serviceRevision
+        ]
 
 
 data Config = Config
@@ -169,6 +179,13 @@ implementsService :: Authority -> Service -> Container -> Bool
 implementsService authority service container =
     (containerAuthority container) == authority && (containerService container) == service
 
+instance ToJSON Container where
+    toJSON Container{..} = object
+        [ "id"        .= containerId
+        , "service"   .= containerService
+        , "port-map"  .= servicePorts containerService
+        ]
+
 
 data IPv4 = IPv4 Word32 deriving (Eq, Ord)
 
@@ -185,6 +202,7 @@ data Runtime = Runtime
   , backingVolumes :: Map String BackingVolume
   , containers :: Map String (TVar Container)
   }
+
 
 
 -- | Return true if the runtime has a container running that implements the

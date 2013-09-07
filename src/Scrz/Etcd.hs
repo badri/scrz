@@ -1,11 +1,13 @@
-module Scrz.Etcd (listServices) where
+module Scrz.Etcd (listServices, updateRuntime) where
 
 import Data.Maybe
 import Data.Aeson
+import qualified Data.Map as M
 import qualified Data.ByteString.Lazy as LB
 import qualified Data.ByteString.Lazy.Char8 as LC8
 import Control.Applicative
 import Control.Exception
+import Control.Concurrent.STM
 import Scrz.Http
 import Scrz.Utils
 import Scrz.Types
@@ -58,13 +60,12 @@ listKeys path = (flip catch) (\(e :: SomeException) -> return []) $ do
         Just reply -> return $ map rKey reply
 
 getKey :: String -> IO (Maybe Response)
-getKey path = do
+getKey path = (flip catch) (\(e :: SomeException) -> return Nothing) $ do
     getJSON $ baseUrl ++ "/keys" ++ path
 
 putKey :: String -> String -> IO ()
 putKey path value = do
     postUrlEncoded (baseUrl ++ "/keys" ++ path) [("value", value)]
-
 
 listServices :: IO [Service]
 listServices = do
@@ -77,6 +78,25 @@ listServices = do
         services <- catMaybes <$> mapM getKey keys
 
         return $ map (fromJust . decode . rValueLB) services
+
+updateRuntime :: Runtime -> IO ()
+updateRuntime runtime = do
+    conts <- mapM (atomically . readTVar . snd) (M.toList $ containers runtime)
+    fqdn <- fullyQualifiedDomainName
+    maybe (return ()) (setRuntimeValue conts) fqdn
+
+  where
+    setRuntimeValue conts fqdn = do
+        let path  = "/hosts/" ++ fqdn ++ "/runtime"
+        let value = LC8.unpack $ encode conts
+
+        res <- getKey path
+        case res of
+            Nothing -> putKey path value
+            Just x -> do
+                if rValue x == Just value
+                    then return ()
+                    else putKey path value
 
 
 -- /v1/keys/hosts/azeroth.caurea.org/services/rstgj5432fstd

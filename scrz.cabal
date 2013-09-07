@@ -60,9 +60,11 @@ Executable scrz
     Main-is:        Scrz/Main.hs
 
     Extensions:     BangPatterns
+    Extensions:     DeriveGeneric
     Extensions:     DoAndIfThenElse
     Extensions:     ForeignFunctionInterface
     Extensions:     OverloadedStrings
+    Extensions:     RecordWildCards
     Extensions:     RecursiveDo
     Extensions:     ScopedTypeVariables
     Extensions:     ViewPatterns
