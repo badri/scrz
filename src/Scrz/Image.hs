@@ -98,4 +98,4 @@ unpackImage image = do
 
 packImage :: Image -> IO ()
 packImage image = do
-    fatal =<< exec "tar" [ "-cJf", imageContentPath image, "-C", imageVolumePath image, "." ]
+    fatal =<< exec "tar" [ "-czf", imageContentPath image, "-C", imageVolumePath image, "." ]
