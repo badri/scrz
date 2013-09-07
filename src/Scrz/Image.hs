@@ -78,22 +78,17 @@ snapshotContainerImage container image = do
     volumePath' = imagePath ++ "/volume"
 
 
-ensureImage :: Authority -> Image -> IO ()
-ensureImage Local image = do
-    imageVolumeExists <- doesDirectoryExist $ imageVolumePath image
-    unless imageVolumeExists $
-        error $ "Volume for image " ++ imageId image ++ " does not exist"
-
-ensureImage authority image = do
+ensureImage :: Image -> IO ()
+ensureImage image = do
     imageContentExists <- doesFileExist $ imageContentPath image
-    unless imageContentExists $ downloadImage authority image
+    unless imageContentExists $ downloadImage image
 
     imageVolumeExists <- doesDirectoryExist $ imageVolumePath image
     unless imageVolumeExists $ unpackImage image
 
 
-downloadImage :: Authority -> Image -> IO ()
-downloadImage authority image = do
+downloadImage :: Image -> IO ()
+downloadImage image = do
     createDirectoryIfMissing True $ imageBasePath image
     downloadBinary (imageUrl image) $ imageContentPath image
 

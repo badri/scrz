@@ -27,7 +27,7 @@ createContainer runtime authority service = do
 
 
  -- Make sure the image is downloaded and ready to use.
-    ensureImage authority (serviceImage service)
+    ensureImage (serviceImage service)
 
 
  -- Allocate runtime resources (address, ports, volumes etc).
