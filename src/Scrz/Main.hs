@@ -31,6 +31,7 @@ import Scrz.Socket
 import Scrz.Terminal
 import Scrz.Types
 import Scrz.Utils
+import Scrz.Etcd
 
 withMaybe :: Maybe a -> (a -> IO ()) -> IO ()
 withMaybe Nothing  _ = return ()

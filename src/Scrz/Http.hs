@@ -1,6 +1,8 @@
-module Scrz.Http (getJSON, patchJSON, downloadBinary) where
+module Scrz.Http (getJSON, patchJSON, downloadBinary, postUrlEncoded) where
 
 import           Data.Aeson
+import           Data.ByteString (ByteString)
+import           Data.ByteString.Char8 (pack)
 import           Data.Conduit
 import           Data.Conduit.Binary (sinkFile)
 
@@ -15,6 +17,7 @@ getJSON :: (FromJSON a) => String -> IO (Maybe a)
 getJSON url = do
     req <- acceptJSON <$> parseUrl url
     body <- responseBody <$> (withManager $ httpLbs req)
+    print body
     return $ decode body
 
   where
@@ -22,6 +25,12 @@ getJSON url = do
     acceptJSON req = req { requestHeaders = acceptHeader : requestHeaders req }
     acceptHeader = ("Accept","application/json")
 
+postUrlEncoded :: String -> [(String, String)] -> IO ()
+postUrlEncoded url params = do
+    req' <- parseUrl url
+    let req = urlEncodedBody (map (\(k,v) -> (pack k, pack v)) params) $ req'
+
+    void $ withManager $ httpLbs req
 
 patchJSON :: (ToJSON a) => String -> a -> IO ()
 patchJSON url body = do

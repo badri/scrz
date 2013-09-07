@@ -4,4 +4,4 @@ GLOBAL_PACKAGE_PATH=`ghc-pkg list | grep ^/|sed -e s/:// | head -n1`
 GHC_PACKAGE_PATH=$GLOBAL_PACKAGE_PATH:$PWD/vendor/ghc/package.conf.d
 export GHC_PACKAGE_PATH
 
-exec ghci "$@"
+exec ghci -isrc "$@"
