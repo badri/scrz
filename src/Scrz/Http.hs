@@ -17,7 +17,6 @@ getJSON :: (FromJSON a) => String -> IO (Maybe a)
 getJSON url = do
     req <- acceptJSON <$> parseUrl url
     body <- responseBody <$> (withManager $ httpLbs req)
-    print body
     return $ decode body
 
   where

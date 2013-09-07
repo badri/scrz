@@ -71,30 +71,8 @@ createControlThread mvar runtime remoteAuthorityUrl = do
             Just config -> mergeConfig runtime Local config
 
     syncRemoteConfig url = do
-        fqdn' <- fullyQualifiedDomainName
-        withMaybe fqdn' $ \fqdn -> do
-            config <- getJSON $ url ++ "/api/conf?host=" ++ fqdn
-            case config of
-                Nothing -> return ()
-                Just x -> mergeConfig runtime (Remote url) x
-
-            rt <- atomically $ readTVar runtime
-            forM_ (M.elems $ containers rt) $ \container -> do
-                c <- atomically $ readTVar container
-                when ((containerAuthority c) == Remote url) $
-                    updateDeploymentPorts c url
-
-    updateDeploymentPorts container url = do
-        let service = containerService container
-        let pzip = zip (servicePorts service) (containerPorts container)
-        let ports = map toPortMap pzip
-        let body = M.fromList [ ("ports" :: String, ports) ]
-        patchJSON (url ++ "/api/deployments/" ++ (show $ serviceId service)) body
-
-    toPortMap (int, ext) = M.fromList
-        [ ( "internal" :: String, (internalPort int) )
-        , ( "external" :: String, ext )
-        ]
+        services <- listServices
+        mergeConfig runtime (Remote url) (Config services)
 
 
 mergeConfig :: TVar Runtime -> Authority -> Config -> IO ()

@@ -5,7 +5,7 @@ import Data.Aeson
 import qualified Data.ByteString.Lazy as LB
 import qualified Data.ByteString.Lazy.Char8 as LC8
 import Control.Applicative
-import Control.Monad
+import Control.Exception
 import Scrz.Http
 import Scrz.Utils
 import Scrz.Types
@@ -51,7 +51,7 @@ rValueLB :: Response -> LB.ByteString
 rValueLB response = LC8.pack $ fromJust $ rValue response
 
 listKeys :: String -> IO [String]
-listKeys path = do
+listKeys path = (flip catch) (\(e :: SomeException) -> return []) $ do
     reply' <- getJSON $ baseUrl ++ "/keys" ++ path
     case reply' :: Maybe [Response] of
         Nothing -> return []
@@ -75,7 +75,6 @@ listServices = do
     parseServices fqdn = do
         keys <- listKeys $ "/hosts/" ++ fqdn ++ "/services"
         services <- catMaybes <$> mapM getKey keys
-        print services
 
         return $ map (fromJust . decode . rValueLB) services
 
