@@ -113,6 +113,10 @@ instance ToJSON Response where
         let response = "empty" :: String
         in object ["response" .= response]
 
+    toJSON ErrorResponse =
+        let response = "error" :: String
+        in object ["response" .= response]
+
     toJSON (CreateContainerResponse id) =
         let response = "create-container" :: String
         in object ["response" .= response, "id" .= id]
@@ -225,6 +229,9 @@ processCommand runtime (Wait id) = do
 printResponse :: Response -> IO ()
 printResponse EmptyResponse = do
     putStrLn "Empty response"
+
+printResponse ErrorResponse = do
+    putStrLn "Error response"
 
 printResponse (CreateContainerResponse id) = do
     putStrLn $ "Created container " ++ id

@@ -37,7 +37,7 @@ serverSocket = do
 handleClient :: TVar Runtime -> Socket -> IO ()
 handleClient runtime sock = do
     (clientSock, addr) <- accept sock
-    logger $ "Accepted connection from " ++ show addr
+    logger $ "Accepted connection"
 
     bytes <- recv clientSock 99999
     case decode bytes of
@@ -70,7 +70,8 @@ sendCommand command = do
 
     sendCommand_ sock = do
         sendAll sock (encode command)
-        response <- getContents sock
-        case decode response of
+        response <- recv sock 999
+        close sock
+        case decode' response of
             Nothing -> error $ "Unable to parse response: " ++ show response
             Just resp -> return resp
