@@ -88,16 +88,18 @@ startContainer container mbHandle = do
     let lxcConfigPath = containerPath ++ "/config"
     let service       = containerService c
 
-    if isJust $ containerProcess c
-        then return ()
-        else do
-            let args = ([ "-n", id', "-f", lxcConfigPath, "-c", "/dev/null", "/sbin/scrz-init" ]) ++ (serviceCommand service)
+    unless (isJust $ containerProcess c) $ do
+        let args = [ "-n", id'
+                   , "-f", lxcConfigPath
+                   , "-c", "/dev/null"
+                   , "/sbin/scrz-init"
+                   ] ++ (serviceCommand service)
 
-            p <- execEnv "lxc-start" args [] mbHandle
-            void $ forkFinally (wait p) clearContainerProcess
+        p <- execEnv "lxc-start" args [] mbHandle
+        void $ forkFinally (waitE p) clearContainerProcess
 
-            atomically $ modifyTVar container $ \x ->
-                x { containerProcess = Just p }
+        atomically $ modifyTVar container $ \x ->
+            x { containerProcess = Just p }
 
   where
 
@@ -116,7 +118,7 @@ stopContainer container = do
 
     when (isJust (containerProcess c)) $ do
         exec "lxc-stop" [ "-n", containerId c ] >>= wait
-        wait (fromJust $ containerProcess c)
+        waitE (fromJust $ containerProcess c)
 
         atomically $ modifyTVar container $ \x ->
             x { containerProcess = Nothing }

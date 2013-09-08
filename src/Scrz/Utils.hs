@@ -8,7 +8,20 @@ import System.Exit
 import Network.BSD (getHostName)
 import Network.Socket
 import Control.Applicative
+import Control.Monad
+import System.Posix.Types
+import System.Posix.Process
+import System.Posix.IO
+import Data.Maybe
+import Foreign.C.Types
+import Control.Exception
 
+foreign import ccall unsafe "login_tty"
+  c_login_tty :: CInt -> IO CInt
+
+newSession :: Fd -> IO ()
+newSession fd = do
+    void $ c_login_tty (fromIntegral fd)
 
 newId :: IO String
 newId = evalRandIO (sequence (replicate 10 rnd))
@@ -21,14 +34,25 @@ exec cmd args = do
     (_, _, _, p) <- createProcess (proc cmd args)
     return p
 
-execEnv :: String -> [ String ] -> [ (String,String) ] -> Maybe Handle -> IO ProcessHandle
+execEnv :: String -> [ String ] -> [ (String,String) ] -> Maybe Handle -> IO ProcessID
 execEnv cmd args environment mbHandle = do
-    let stream = maybe Inherit UseHandle mbHandle
-    (_, _, _, p) <- createProcess $ (proc cmd args) { env = Just environment, std_in = stream, std_out = stream, std_err = stream }
-    return p
+    child <- forkProcess $ do
+        when (isJust mbHandle) $ do
+            fd <- handleToFd $ fromJust mbHandle
+            newSession fd
+
+        executeFile cmd True args (Just environment)
+
+    return child
+
+waitE :: ProcessID -> IO ()
+waitE p = void (getProcessStatus True True p) `catch` ignoreException
+  where
+    ignoreException :: SomeException -> IO ()
+    ignoreException _ = return ()
 
 wait :: ProcessHandle -> IO ()
-wait p = waitForProcess p >> return ()
+wait = void . waitForProcess
 
 fatal :: ProcessHandle -> IO ()
 fatal p = do

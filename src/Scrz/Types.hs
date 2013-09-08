@@ -12,6 +12,7 @@ import System.Process
 import Data.Word
 import Control.Applicative
 import Control.Concurrent.STM
+import System.Posix.Types
 
 
 data Image = Image
@@ -171,7 +172,7 @@ data Container = Container
 
   , containerVolumes :: [ BackingVolume ]
 
-  , containerProcess :: Maybe ProcessHandle
+  , containerProcess :: Maybe ProcessID
     -- ^ The process (lxc-start) which runs the container.
   }
 

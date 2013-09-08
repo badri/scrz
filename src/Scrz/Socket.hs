@@ -8,7 +8,8 @@ import Network.Socket hiding (send, sendTo, recv, recvFrom)
 import Network.Socket.ByteString.Lazy
 import Prelude hiding (getContents)
 
-import Control.Concurrent.STM.TVar
+import Control.Concurrent.STM
+import Control.Exception
 
 import Scrz.Log
 import Scrz.Types
@@ -61,8 +62,15 @@ sendCommand :: Command -> IO Response
 sendCommand command = do
     sock <- clientSocket
 
-    sendAll sock (encode command)
-    response <- getContents sock
-    case decode response of
-        Nothing -> error $ "Unable to parse response: " ++ show response
-        Just resp -> return resp
+    sendCommand_ sock `catch` \(e :: SomeException) -> do
+        logger $ "Got exception"
+        return ErrorResponse
+
+  where
+
+    sendCommand_ sock = do
+        sendAll sock (encode command)
+        response <- getContents sock
+        case decode response of
+            Nothing -> error $ "Unable to parse response: " ++ show response
+            Just resp -> return resp

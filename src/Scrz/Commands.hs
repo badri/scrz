@@ -88,6 +88,7 @@ instance ToJSON Command where
 
 data Response
   = EmptyResponse
+  | ErrorResponse
   | CreateContainerResponse String
   | ListContainersResponse [ [ String ] ]
   deriving (Show)

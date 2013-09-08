@@ -202,30 +202,48 @@ run [ "pack-image", id' ] = do
     packImage id'
 
 run ("run":args) = do
-    let ra = parseRunArguments (RunArgs "" [] [] Nothing) args
+    (ptm, pts) <- openPseudoTerminal
+    attrs      <- setRawModeFd stdInput
 
-    (ptm, _) <- openPseudoTerminal
-    slaveName <- getSlaveTerminalName ptm
-    response <- sendCommand $ Run (runArgsImage ra) (runArgsCommand ra) slaveName (runArgsMounts ra)
+    response <- finally (sendRunCommand ptm) (freeResources ptm pts attrs) `catch` \(e :: SomeException) -> return ErrorResponse
 
-    attr1 <- setRawModeFd stdInput
+    logger $ show response
+    handleResponse response `onException` do
+        logger $ "Got exception"
 
-    let pump src dst = fdRead src 999 >>= \(x, _) -> fdWrite dst x
 
-    void $ forkFinally (forever $ pump ptm stdOutput) (const $ return ())
-    void $ forkFinally (forever $ pump stdInput ptm)  (const $ return ())
+  where
+    ra = parseRunArguments (RunArgs "" [] [] Nothing) args
+    pump src dst = fdRead src 999 >>= \(x, _) -> fdWrite dst x
 
-    case response of
-        CreateContainerResponse id' -> do
-            void $ sendCommand $ Wait id'
-            resetModeFd stdInput attr1
-            imageId' <- maybe newId return (runArgsSaveAs ra)
-            logger $ "Saving image under id " ++ imageId'
-            void $ sendCommand $ Snapshot id' imageId'
-            void $ sendCommand $ DestroyContainer id'
-            return ()
+    freeResources ptm pts attrs = do
+        resetModeFd stdInput attrs
+        closeFd ptm
+        closeFd pts
 
-        _ -> return ()
+    sendRunCommand ptm = do
+        void $ forkFinally (forever $ pump ptm stdOutput) (const $ return ())
+        void $ forkFinally (forever $ pump stdInput ptm)  (const $ return ())
+
+        slaveName <- getSlaveTerminalName ptm
+        response  <- sendCommand $ Run (runArgsImage ra) (runArgsCommand ra) slaveName (runArgsMounts ra)
+
+        case response of
+            CreateContainerResponse id' -> void $ sendCommand $ Wait id'
+            _ -> return ()
+
+        return response
+
+    handleResponse response = do
+        case response of
+            CreateContainerResponse id' -> do
+                imageId' <- maybe newId return (runArgsSaveAs ra)
+                logger $ "Saving image under id " ++ imageId'
+                void $ sendCommand $ Snapshot id' imageId'
+                void $ sendCommand $ DestroyContainer id'
+
+            _ -> do
+                logger $ "Received unexpected response: " ++ show response
 
 
 run args = do
