@@ -92,6 +92,7 @@ startContainer container mbHandle = do
         let args = [ "-n", id'
                    , "-f", lxcConfigPath
                    , "-c", "/dev/null"
+                   , "--"
                    , "/sbin/scrz-init"
                    ] ++ (serviceCommand service)
 
