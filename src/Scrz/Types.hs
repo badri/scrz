@@ -32,7 +32,11 @@ instance FromJSON Image where
     parseJSON _ = fail "Image"
 
 instance ToJSON Image where
-    toJSON x = object []
+    toJSON image = object
+        [ "url"      .= imageUrl image
+        , "checksum" .= imageChecksum image
+        , "size"     .= imageSize image
+        ]
 
 
 hashChar :: Int -> Char
@@ -52,7 +56,10 @@ hashString input
     (a, b) = divMod input 62
 
 imageId :: Image -> String
-imageId = take 13 . hashString . abs . hash
+imageId image =
+    if (imageSize image) == 0
+        then "-"
+        else take 13 . hashString . abs . hash $ image
 
 
 data Port = Port

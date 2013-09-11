@@ -1,7 +1,10 @@
 module Scrz.Image where
 
+import           Data.Aeson
+
 import           Data.Map (Map)
 import qualified Data.Map as M
+import qualified Data.ByteString.Lazy as LB
 
 import System.Directory
 import System.FilePath
@@ -36,6 +39,13 @@ imageVolumePathS image = imageBasePathS image </> "volume"
 imageVolumePath :: Image -> String
 imageVolumePath = imageVolumePathS . imageId
 
+imageMetaPathS :: String -> String
+imageMetaPathS image = imageBasePathS image </> "meta"
+
+imageMetaPath :: Image -> String
+imageMetaPath = imageMetaPathS . imageId
+
+
 getImage :: String -> IO Image
 getImage id' = do
     images <- loadImages
@@ -46,9 +56,22 @@ getImage id' = do
 
 loadImages :: IO (Map String Image)
 loadImages = do
-    images <- getDirectoryContents baseImageDirectory
-    return $ M.fromList $ map (\id' -> (id', Image id' "" 0)) images
+    ids <- filter (\x -> '.' /= head x) <$> getDirectoryContents baseImageDirectory
+    images <- mapM loadImageMeta ids
+    return $ M.fromList $ zip ids images
 
+  where
+
+    loadImageMeta :: String -> IO Image
+    loadImageMeta imgId = do
+        metaExists <- doesFileExist $ imageMetaPathS imgId
+        if not metaExists
+            then return $ Image "-" "-" 0
+            else do
+                meta <- LB.readFile $ imageMetaPathS imgId
+                return $ case decode meta of
+                    Nothing -> Image "-" "-" 0
+                    Just x -> x
 
 cloneImage :: Image -> String -> IO ()
 cloneImage image path = do
@@ -91,6 +114,7 @@ downloadImage :: Image -> IO ()
 downloadImage image = do
     createDirectoryIfMissing True $ imageBasePath image
     downloadBinary (imageUrl image) $ imageContentPath image
+    LB.writeFile (imageMetaPath image) $ encode image
 
 
 unpackImage :: Image -> IO ()
