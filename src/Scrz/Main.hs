@@ -174,17 +174,23 @@ run [ "console", id' ] = do
 run [ "list-images" ] = do
     images <- loadImages
 
-    let headers = [ "ID", "URL" ]
-    let rows    = map toRow $ M.toList images
+    let headers = [ "ID", "CSUM",  "URL" ]
+    rows <- mapM toRow $ M.toList images
     tabWriter $ headers : rows
 
   where
 
-    toRow :: (String, Image) -> [String]
-    toRow (imgId, image) =
-        [ if imageUrl image == "" then imgId else imageId image
-        , imageUrl image
-        ]
+    toRow :: (String, Image) -> IO [String]
+    toRow (imgId, image) = do
+        imageContentExists <- doesFileExist $ imageContentPath image
+        ok <- if imageContentExists
+                 then verifyContent image "✗" $ \checksum size -> return "✓"
+                 else return "?"
+
+        return [ if imageUrl image == "" then imgId else imageId image
+               , ok
+               , imageUrl image
+               ]
 
 
 run [ "download-image", url, checksum, sizeStr ] = do

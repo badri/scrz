@@ -106,15 +106,16 @@ snapshotContainerImage container image = do
     volumePath' = imagePath ++ "/volume"
 
 
-verifyContent :: Image -> (String -> Int -> IO ()) -> IO ()
-verifyContent image action = do
+verifyContent :: Image -> a -> (String -> Int -> IO a) -> IO a
+verifyContent image def action = do
     (checksum, size) <- hashFile (imageContentPath image)
 
     let checksumOk = isCorrectChecksum checksum image
     let sizeOk     = isCorrectSize size image
 
-    when (not (checksumOk && sizeOk)) $
-        action checksum size
+    if checksumOk && sizeOk
+        then return def
+        else action checksum size
 
 
 ensureImage :: Image -> IO ()
@@ -126,7 +127,7 @@ ensureImage image = do
 
     when imageContentExists $ do
         logger $ "Verifying existing image content file"
-        verifyContent image $ \checksum size -> do
+        verifyContent image () $ \checksum size -> do
             logger $ "Content file is corrupt, deleting"
             removeFile (imageContentPath image)
 
@@ -139,7 +140,7 @@ ensureImage image = do
 
 
     -- FIXME: Only verify if we've downloaded the file.
-    verifyContent image $ \checksum size -> do
+    verifyContent image () $ \checksum size -> do
         logger $ "Downloaded image has invalid checksum"
         error "Image checksum mismatch"
 
