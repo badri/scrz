@@ -4,7 +4,11 @@ import           Data.Aeson
 
 import           Data.Map (Map)
 import qualified Data.Map as M
+import qualified Data.ByteString.Char8 as BS8
+import qualified Data.ByteString.Base16 as BS16
 import qualified Data.ByteString.Lazy as LB
+
+import qualified Crypto.Hash.SHA3 as SHA3
 
 import System.Directory
 import System.FilePath
@@ -120,9 +124,37 @@ downloadImage image = do
 unpackImage :: Image -> IO ()
 unpackImage image = do
     fatal =<< exec "btrfs" [ "subvolume", "create", imageVolumePath image ]
-    fatal =<< exec "tar" [ "-xf", imageContentPath image, "-C", imageVolumePath image ]
+    unpackTarball (imageContentPath image) (imageVolumePath image)
+
+
+createTarball :: String -> String -> IO ()
+createTarball tgz path = do
+    fatal =<< exec "tar" [ "-czf", tgz, "-C", path, "." ]
+
+
+unpackTarball :: String -> String -> IO ()
+unpackTarball tgz path = do
+    fatal =<< exec "tar" [ "-xf", tgz, "-C", path ]
+
+
+writeMetaFile :: String -> Image -> IO ()
+writeMetaFile localImageId image = do
+    LB.writeFile (imageMetaPathS localImageId) $ encode image
+
+
+hashFile :: String -> IO (String, Int)
+hashFile path = do
+    contents <- LB.readFile path
+    let size = fromIntegral $ LB.length contents
+    return $ (BS8.unpack $ BS16.encode $ SHA3.hashlazy 512 contents, size)
 
 
 packImage :: String -> IO ()
-packImage image = do
-    fatal =<< exec "tar" [ "-czf", imageContentPathS image, "-C", imageVolumePathS image, "." ]
+packImage localImageId = do
+    createTarball contentPath (imageVolumePathS localImageId)
+    (hash, size) <- hashFile contentPath
+    writeMetaFile localImageId $ Image localImageId hash size
+
+  where
+
+    contentPath = imageContentPathS localImageId
