@@ -174,7 +174,7 @@ run [ "console", id' ] = do
 run [ "list-images" ] = do
     images <- loadImages
 
-    let headers = [ "ID", "CHECKSUM", "SIZE", "URL" ]
+    let headers = [ "ID", "URL" ]
     let rows    = map toRow $ M.toList images
     tabWriter $ headers : rows
 
@@ -182,9 +182,7 @@ run [ "list-images" ] = do
 
     toRow :: (String, Image) -> [String]
     toRow (imgId, image) =
-        [ if imageId image == "-" then imgId else imageId image
-        , imageChecksum image
-        , show $ imageSize image
+        [ if imageUrl image == "" then imgId else imageId image
         , imageUrl image
         ]
 
@@ -193,6 +191,9 @@ run [ "download-image", url, checksum, sizeStr ] = do
     let image = Image url checksum $ read sizeStr
     print $ imageId image
     downloadImage image
+
+run [ "destroy-image", localImageId ] = do
+    destroyImage localImageId
 
 run [ "ipvs", addr, url ] = do
     runtime <- mkProxyRuntime addr

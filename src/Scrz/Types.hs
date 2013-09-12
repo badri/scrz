@@ -68,10 +68,7 @@ hashString input
     (a, b) = divMod input 62
 
 imageId :: Image -> String
-imageId image =
-    if (imageSize image) == 0
-        then "-"
-        else take 13 . hashString . abs . hash $ image
+imageId image = take 13 . hashString . abs . hash $ image
 
 
 data Port = Port

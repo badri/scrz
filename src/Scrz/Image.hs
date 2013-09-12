@@ -71,11 +71,11 @@ loadImages = do
     loadImageMeta imgId = do
         metaExists <- doesFileExist $ imageMetaPathS imgId
         if not metaExists
-            then return $ Image "-" "-" 0
+            then return $ Image "" "" 0
             else do
                 meta <- LB.readFile $ imageMetaPathS imgId
                 return $ case decode meta of
-                    Nothing -> Image "-" "-" 0
+                    Nothing -> Image "" "" 0
                     Just x -> x
 
 cloneImage :: Image -> String -> IO ()
@@ -154,6 +154,18 @@ downloadImage image = do
     createDirectoryIfMissing True $ imageBasePath image
     downloadBinary (imageUrl image) $ imageContentPath image
     writeMetaFile (imageId image) image
+
+destroyImage :: String -> IO ()
+destroyImage localImageId = do
+    volumeExists <- doesDirectoryExist volumePath
+    when volumeExists $ do
+        fatal =<< exec "btrfs" [ "subvolume", "delete", volumePath ]
+
+    removeDirectoryRecursive $ imageBasePathS localImageId
+
+  where
+
+    volumePath = imageVolumePathS localImageId
 
 
 unpackImage :: Image -> IO ()
