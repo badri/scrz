@@ -20,6 +20,7 @@ import Control.Concurrent.STM
 import Scrz.Types
 import Scrz.Utils
 import Scrz.Http
+import Scrz.Log
 
 
 baseImageDirectory :: String
@@ -105,10 +106,43 @@ snapshotContainerImage container image = do
     volumePath' = imagePath ++ "/volume"
 
 
+verifyContent :: Image -> (String -> Int -> IO ()) -> IO ()
+verifyContent image action = do
+    (checksum, size) <- hashFile (imageContentPath image)
+
+    let checksumOk = isCorrectChecksum checksum image
+    let sizeOk     = isCorrectSize size image
+
+    when (not (checksumOk && sizeOk)) $
+        action checksum size
+
+
 ensureImage :: Image -> IO ()
 ensureImage image = do
     imageContentExists <- doesFileExist $ imageContentPath image
+
+    -- Verify the content file if it already exists. If the verification
+    -- fails, delete the file and we'll try to download it again.
+
+    when imageContentExists $ do
+        logger $ "Verifying existing image content file"
+        verifyContent image $ \checksum size -> do
+            logger $ "Content file is corrupt, deleting"
+            removeFile (imageContentPath image)
+
+
+    -- Check again if the file exists. It may have been removed if the
+    -- verification just above failed.
+
+    imageContentExists <- doesFileExist $ imageContentPath image
     unless imageContentExists $ downloadImage image
+
+
+    -- FIXME: Only verify if we've downloaded the file.
+    verifyContent image $ \checksum size -> do
+        logger $ "Downloaded image has invalid checksum"
+        error "Image checksum mismatch"
+
 
     imageVolumeExists <- doesDirectoryExist $ imageVolumePath image
     unless imageVolumeExists $ unpackImage image
@@ -116,9 +150,10 @@ ensureImage image = do
 
 downloadImage :: Image -> IO ()
 downloadImage image = do
+    logger $ "Downloading image " ++ imageId image ++ " from " ++ imageUrl image
     createDirectoryIfMissing True $ imageBasePath image
     downloadBinary (imageUrl image) $ imageContentPath image
-    LB.writeFile (imageMetaPath image) $ encode image
+    writeMetaFile (imageId image) image
 
 
 unpackImage :: Image -> IO ()
@@ -140,6 +175,14 @@ unpackTarball tgz path = do
 writeMetaFile :: String -> Image -> IO ()
 writeMetaFile localImageId image = do
     LB.writeFile (imageMetaPathS localImageId) $ encode image
+
+
+readMetaFile :: String -> IO (Maybe Image)
+readMetaFile localImageId = do
+    metaFileExists <- doesFileExist $ imageMetaPathS localImageId
+    if not metaFileExists
+        then return Nothing
+        else decode <$> LB.readFile (imageMetaPathS localImageId)
 
 
 hashFile :: String -> IO (String, Int)

@@ -39,6 +39,18 @@ instance ToJSON Image where
         ]
 
 
+isCorrectChecksum :: String -> Image -> Bool
+isCorrectChecksum checksum image =
+    if imageChecksum image == ""
+        then True
+        else checksum == imageChecksum image
+
+isCorrectSize :: Int -> Image -> Bool
+isCorrectSize size image =
+    if imageSize image == 0
+        then True
+        else size == imageSize image
+
 hashChar :: Int -> Char
 hashChar x
     | x < 26 = chr ((x     ) + 65)
