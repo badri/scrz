@@ -195,8 +195,7 @@ run [ "list-images" ] = do
 
 run [ "download-image", url, checksum, sizeStr ] = do
     let image = Image url checksum $ read sizeStr
-    print $ imageId image
-    downloadImage image
+    ensureImage image
 
 run [ "destroy-image", localImageId ] = do
     destroyImage localImageId
