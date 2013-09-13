@@ -104,7 +104,8 @@ mergeConfig runtime authority config = do
         exists <- hasContainer rt authority service
 
         unless exists $ do
-            container <- createContainer runtime authority service
+            let image = imageFromMeta $ serviceImage service
+            container <- createContainer runtime authority service image
             startContainer container Nothing
             id' <- atomically $ containerId <$> readTVar container
             logger $ show id'
@@ -181,21 +182,18 @@ run [ "list-images" ] = do
   where
 
     toRow :: (String, Image) -> IO [String]
-    toRow (imgId, image) = do
-        imageContentExists <- doesFileExist $ imageContentPath image
-        ok <- if imageContentExists
-                 then verifyContent image "✗" $ \checksum size -> return "✓"
-                 else return "?"
+    toRow (localImageId, image) = do
+        ok <- verifyContent image "✓" $ \_ _ -> return "✗"
 
-        return [ if imageUrl image == "" then imgId else imageId image
+        return [ localImageId
                , ok
-               , imageUrl image
+               , maybe "-" imageUrl (imageMeta image)
                ]
 
 
 run [ "download-image", url, checksum, sizeStr ] = do
-    let image = Image url checksum $ read sizeStr
-    ensureImage image
+    let meta = ImageMeta url checksum $ read sizeStr
+    ensureImage $ Image (mkImageId meta) (Just meta)
 
 run [ "destroy-image", localImageId ] = do
     destroyImage localImageId

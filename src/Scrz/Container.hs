@@ -21,13 +21,13 @@ import Scrz.Network
 import Scrz.Volume
 import Scrz.Log
 
-createContainer :: TVar Runtime -> Authority -> Service -> IO (TVar Container)
-createContainer runtime authority service = do
+createContainer :: TVar Runtime -> Authority -> Service -> Image -> IO (TVar Container)
+createContainer runtime authority service image = do
     id' <- newId
 
 
  -- Make sure the image is downloaded and ready to use.
-    ensureImage (serviceImage service)
+    ensureImage image
 
 
  -- Allocate runtime resources (address, ports, volumes etc).
@@ -44,7 +44,7 @@ createContainer runtime authority service = do
     gatewayAddress <- atomically $ bridgeAddress <$> readTVar runtime
 
     createDirectoryIfMissing True containerPath
-    cloneImage (serviceImage service) rootfsPath
+    cloneImage image rootfsPath
 
     let volumes = zip backingVolumes' (serviceVolumes service)
     writeFile lxcConfigPath $ lxcConfig id' addr gatewayAddress rootfsPath volumes

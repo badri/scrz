@@ -15,23 +15,33 @@ import Control.Concurrent.STM
 import System.Posix.Types
 
 
+-- | An image that can be used to start a container. It has a local id, which
+-- is used in the directory name under which the image is stored. The id must
+-- be unique amongst all images on a particular host. If the image was created
+-- from metadata (see 'imageFromMeta') then the id is automatically generated
+-- by hashing the ImageMeta record.
 data Image = Image
+  { imageId :: String
+  , imageMeta :: Maybe ImageMeta
+  } deriving (Show, Eq)
+
+data ImageMeta = ImageMeta
   { imageUrl :: String
   , imageChecksum :: String
   , imageSize :: Int
   } deriving (Show, Eq, Generic)
 
-instance Hashable Image
+instance Hashable ImageMeta
 
-instance FromJSON Image where
-    parseJSON (Object o) = Image
+instance FromJSON ImageMeta where
+    parseJSON (Object o) = ImageMeta
         <$> o .: "url"
         <*> o .: "checksum"
         <*> o .: "size"
 
     parseJSON _ = fail "Image"
 
-instance ToJSON Image where
+instance ToJSON ImageMeta where
     toJSON image = object
         [ "url"      .= imageUrl image
         , "checksum" .= imageChecksum image
@@ -39,13 +49,13 @@ instance ToJSON Image where
         ]
 
 
-isCorrectChecksum :: String -> Image -> Bool
+isCorrectChecksum :: String -> ImageMeta -> Bool
 isCorrectChecksum checksum image =
     if imageChecksum image == ""
         then True
         else checksum == imageChecksum image
 
-isCorrectSize :: Int -> Image -> Bool
+isCorrectSize :: Int -> ImageMeta -> Bool
 isCorrectSize size image =
     if imageSize image == 0
         then True
@@ -67,8 +77,8 @@ hashString input
 
     (a, b) = divMod input 62
 
-imageId :: Image -> String
-imageId image = take 13 . hashString . abs . hash $ image
+mkImageId :: ImageMeta -> String
+mkImageId image = take 13 . hashString . abs . hash $ image
 
 
 data Port = Port
@@ -118,7 +128,7 @@ instance ToJSON Volume where
 data Service = Service
   { serviceId :: Int
   , serviceRevision :: Int
-  , serviceImage :: Image
+  , serviceImage :: ImageMeta
   , serviceCommand :: [ String ]
     -- ^ Command and arguments that are executed to start this service.
 

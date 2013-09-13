@@ -134,7 +134,7 @@ processCommand _ Quit = do
 processCommand runtime (CreateContainer service) = do
     logger $ "Creating container " ++ (show $ serviceRevision service)
 
-    container <- createContainer runtime Socket service
+    container <- createContainer runtime Socket service (imageFromMeta $ serviceImage service)
     startContainer container Nothing
     id <- atomically $ containerId <$> readTVar container
     return $ CreateContainerResponse id
@@ -151,7 +151,7 @@ processCommand runtime ListContainers = do
         c <- atomically $ readTVar container
 
         let cid = containerId c
-        let iid = imageId $ serviceImage $ containerService c
+        let iid = mkImageId $ serviceImage $ containerService c
         let cmd = head $ serviceCommand $ containerService c
         let sta = if isJust $ containerProcess c then "running" else "stopped"
         return [ cid, iid, cmd, sta ]
@@ -194,19 +194,20 @@ processCommand runtime (Start id) = do
 
 processCommand runtime (Run image command pts mounts) = do
     handle <- openFile pts ReadWriteMode
-    let handle1 = handle
+    let meta = ImageMeta image "" 0
+    let image = Image (mkImageId meta) (Just meta)
 
     let service = Service { serviceId = 0
       , serviceRevision = 0
-      , serviceImage = Image image "" 0
+      , serviceImage = meta
       , serviceCommand = command
       , serviceEnvironment = []
       , servicePorts = []
       , serviceVolumes = map (\(a,b) -> Volume a (Just b)) mounts
       }
 
-    container <- createContainer runtime Socket service
-    startContainer container (Just handle1)
+    container <- createContainer runtime Socket service image
+    startContainer container (Just handle)
     id <- atomically $ containerId <$> readTVar container
     return $ CreateContainerResponse id
 

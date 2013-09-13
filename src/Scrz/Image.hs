@@ -51,6 +51,13 @@ imageMetaPath :: Image -> String
 imageMetaPath = imageMetaPathS . imageId
 
 
+localImage :: String -> Image
+localImage imgId = Image imgId Nothing
+
+imageFromMeta :: ImageMeta -> Image
+imageFromMeta meta = Image (mkImageId meta) (Just meta)
+
+
 getImage :: String -> IO Image
 getImage id' = do
     images <- loadImages
@@ -69,14 +76,9 @@ loadImages = do
 
     loadImageMeta :: String -> IO Image
     loadImageMeta imgId = do
-        metaExists <- doesFileExist $ imageMetaPathS imgId
-        if not metaExists
-            then return $ Image "" "" 0
-            else do
-                meta <- LB.readFile $ imageMetaPathS imgId
-                return $ case decode meta of
-                    Nothing -> Image "" "" 0
-                    Just x -> x
+        meta <- readMetaFile imgId
+        return $ maybe (localImage imgId) (Image imgId . Just) meta
+
 
 cloneImage :: Image -> String -> IO ()
 cloneImage image path = do
@@ -107,11 +109,13 @@ snapshotContainerImage container image = do
 
 
 verifyContent :: Image -> a -> (String -> Int -> IO a) -> IO a
-verifyContent image def action = do
-    (checksum, size) <- hashFile (imageContentPath image)
+verifyContent image def action
+  | Nothing   <- imageMeta image = return def
+  | Just meta <- imageMeta image = do
+    (checksum, size) <- hashFile (imageContentPathS $ imageId image)
 
-    let checksumOk = isCorrectChecksum checksum image
-    let sizeOk     = isCorrectSize size image
+    let checksumOk = isCorrectChecksum checksum meta
+    let sizeOk     = isCorrectSize size meta
 
     if checksumOk && sizeOk
         then return def
@@ -150,11 +154,15 @@ ensureImage image = do
 
 
 downloadImage :: Image -> IO ()
-downloadImage image = do
-    logger $ "Downloading image " ++ imageId image ++ " from " ++ imageUrl image
-    createDirectoryIfMissing True $ imageBasePath image
-    downloadBinary (imageUrl image) $ imageContentPath image
-    writeMetaFile (imageId image) image
+downloadImage image = maybe (return ()) doDownloadImage (imageMeta image)
+  where
+    doDownloadImage :: ImageMeta -> IO ()
+    doDownloadImage meta = do
+        logger $ "Downloading image " ++ imageId image ++ " from " ++ imageUrl meta
+        createDirectoryIfMissing True $ imageBasePath image
+        downloadBinary (imageUrl meta) $ imageContentPath image
+        writeMetaFile (imageId image) meta
+
 
 destroyImage :: String -> IO ()
 destroyImage localImageId = do
@@ -185,12 +193,12 @@ unpackTarball tgz path = do
     fatal =<< exec "tar" [ "-xf", tgz, "-C", path ]
 
 
-writeMetaFile :: String -> Image -> IO ()
+writeMetaFile :: String -> ImageMeta -> IO ()
 writeMetaFile localImageId image = do
     LB.writeFile (imageMetaPathS localImageId) $ encode image
 
 
-readMetaFile :: String -> IO (Maybe Image)
+readMetaFile :: String -> IO (Maybe ImageMeta)
 readMetaFile localImageId = do
     metaFileExists <- doesFileExist $ imageMetaPathS localImageId
     if not metaFileExists
@@ -209,7 +217,7 @@ packImage :: String -> IO ()
 packImage localImageId = do
     createTarball contentPath (imageVolumePathS localImageId)
     (hash, size) <- hashFile contentPath
-    writeMetaFile localImageId $ Image localImageId hash size
+    writeMetaFile localImageId $ ImageMeta localImageId hash size
 
   where
 
