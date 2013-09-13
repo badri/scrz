@@ -43,6 +43,7 @@ import Scrz.Types
 import Scrz.Utils
 import Scrz.Http
 import Scrz.Log
+import Scrz.Btrfs
 
 
 baseImageDirectory :: String
@@ -92,14 +93,12 @@ loadImages = do
 
 cloneImage :: Image -> String -> IO ()
 cloneImage image path = do
-    p <- exec "btrfs" [ "subvolume", "snapshot", imageVolumePath image, path ]
-    fatal p
+    btrfsSubvolSnapshot (imageVolumePath image) path
 
 
 deleteImageClone :: String -> IO ()
 deleteImageClone path = do
-    p <- exec "btrfs" [ "subvolume", "delete", path ]
-    wait p
+    btrfsSubvolDelete path
 
 
 snapshotContainerImage :: TVar Container -> String -> IO ()
@@ -107,9 +106,7 @@ snapshotContainerImage container image = do
     id' <- atomically $ containerId <$> readTVar container
     let rootfsPath = "/srv/scrz/containers/" ++ id' ++ "/rootfs"
 
-    createDirectoryIfMissing True imagePath
-    p <- exec "btrfs" [ "subvolume", "snapshot", rootfsPath, volumePath']
-    wait p
+    btrfsSubvolSnapshot rootfsPath volumePath'
 
   where
 
@@ -184,7 +181,7 @@ destroyImage :: String -> IO ()
 destroyImage localImageId = do
     volumeExists <- doesDirectoryExist volumePath
     when volumeExists $ do
-        fatal =<< exec "btrfs" [ "subvolume", "delete", volumePath ]
+        btrfsSubvolDelete volumePath
 
     removeDirectoryRecursive $ imageBasePathS localImageId
 
@@ -195,7 +192,7 @@ destroyImage localImageId = do
 
 unpackImage :: Image -> IO ()
 unpackImage image = do
-    fatal =<< exec "btrfs" [ "subvolume", "create", imageVolumePath image ]
+    btrfsSubvolCreate (imageVolumePath image)
     unpackTarball (imageContentPath image) (imageVolumePath image)
 
 

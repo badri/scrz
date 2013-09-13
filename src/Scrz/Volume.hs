@@ -9,6 +9,7 @@ import Control.Concurrent.STM
 
 import Scrz.Types
 import Scrz.Utils
+import Scrz.Btrfs
 
 
 baseVolumeDirectory :: String
@@ -30,8 +31,7 @@ releaseVolume runtime (ManagedVolume id') = do
         x { backingVolumes = M.delete id' (backingVolumes x) }
 
     let path = baseVolumeDirectory ++ "/" ++ id'
-    p <- exec "btrfs" [ "subvolume", "delete", path ]
-    wait p
+    btrfsSubvolDelete path
 
 
 allocateVolume :: TVar Runtime -> Volume -> IO BackingVolume
@@ -50,13 +50,10 @@ allocateVolume runtime volume = do
 
 createBackingVolume :: TVar Runtime -> IO BackingVolume
 createBackingVolume runtime = do
-    createDirectoryIfMissing True baseVolumeDirectory
-
     id' <- newId
     let backingVolumePath' = baseVolumeDirectory ++ "/" ++ id'
 
-    p <- exec "btrfs" [ "subvolume", "create", backingVolumePath' ]
-    fatal p
+    btrfsSubvolCreate backingVolumePath'
 
     let ret = ManagedVolume id'
     atomically $ modifyTVar runtime $ \x ->
