@@ -1,18 +1,21 @@
 module Scrz.Types where
 
-import GHC.Generics (Generic)
-import Data.Aeson
-import Data.Char (chr)
-import Data.Maybe (isJust)
-import Data.List as L
-import Data.Set (Set)
-import Data.Map as M
-import Data.Hashable
-import System.Process
-import Data.Word
-import Control.Applicative
-import Control.Concurrent.STM
-import System.Posix.Types
+import           GHC.Generics (Generic)
+
+import           Data.Aeson
+import           Data.Char (chr)
+import           Data.Hashable
+import           Data.List as L
+import           Data.Map (Map)
+import qualified Data.Map as M
+import           Data.Maybe (isJust)
+import           Data.Set (Set)
+import           Data.Word
+
+
+import           Control.Applicative
+import           Control.Concurrent.STM
+import           System.Posix.Types
 
 
 -- | An image that can be used to start a container. It has a local id, which

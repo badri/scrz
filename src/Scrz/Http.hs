@@ -1,7 +1,6 @@
 module Scrz.Http (getJSON, patchJSON, downloadBinary, postUrlEncoded) where
 
 import           Data.Aeson
-import           Data.ByteString (ByteString)
 import           Data.ByteString.Char8 (pack)
 import           Data.Conduit
 import           Data.Conduit.Binary (sinkFile)

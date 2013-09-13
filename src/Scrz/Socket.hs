@@ -36,7 +36,7 @@ serverSocket = do
 
 handleClient :: TVar Runtime -> Socket -> IO ()
 handleClient runtime sock = do
-    (clientSock, addr) <- accept sock
+    (clientSock, _) <- accept sock
     logger $ "Accepted connection"
 
     bytes <- recv clientSock 99999
@@ -62,7 +62,7 @@ sendCommand :: Command -> IO Response
 sendCommand command = do
     sock <- clientSocket
 
-    sendCommand_ sock `catch` \(e :: SomeException) -> do
+    sendCommand_ sock `catch` \(_ :: SomeException) -> do
         logger $ "Got exception"
         return ErrorResponse
 

@@ -108,42 +108,49 @@ snapshotContainerImage container image = do
 
 
 verifyContent :: Image -> a -> (String -> Int -> IO a) -> IO a
-verifyContent image def action
-  | Nothing   <- imageMeta image = return def
-  | Just meta <- imageMeta image = do
-    (checksum, size) <- hashFile (imageContentPathS $ imageId image)
+verifyContent image def action = maybe (return def) doVerifyContent (imageMeta image)
+  where
+    doVerifyContent meta = do
+        (checksum, size) <- hashFile (imageContentPathS $ imageId image)
 
-    let checksumOk = isCorrectChecksum checksum meta
-    let sizeOk     = isCorrectSize size meta
+        let checksumOk = isCorrectChecksum checksum meta
+        let sizeOk     = isCorrectSize size meta
 
-    if checksumOk && sizeOk
-        then return def
-        else action checksum size
+        if checksumOk && sizeOk
+            then return def
+            else action checksum size
+
+whenIO :: IO Bool -> IO () -> IO ()
+whenIO conditionAction thenAction = do
+    condition <- conditionAction
+    when condition thenAction
+
+unlessIO :: IO Bool -> IO () -> IO ()
+unlessIO conditionAction thenAction = do
+    condition <- conditionAction
+    unless condition thenAction
 
 
 ensureImage :: Image -> IO ()
 ensureImage image = do
-    imageContentExists <- doesFileExist $ imageContentPath image
 
     -- Verify the content file if it already exists. If the verification
     -- fails, delete the file and we'll try to download it again.
-
-    when imageContentExists $ do
+    whenIO (doesFileExist $ imageContentPath image) $ do
         logger $ "Verifying existing image content file"
-        verifyContent image () $ \checksum size -> do
+        verifyContent image () $ \_ _ -> do
             logger $ "Content file is corrupt, deleting"
             removeFile (imageContentPath image)
 
 
     -- Check again if the file exists. It may have been removed if the
     -- verification just above failed.
-
-    imageContentExists <- doesFileExist $ imageContentPath image
-    unless imageContentExists $ downloadImage image
+    unlessIO (doesFileExist $ imageContentPath image) $ do
+        downloadImage image
 
 
     -- FIXME: Only verify if we've downloaded the file.
-    verifyContent image () $ \checksum size -> do
+    verifyContent image () $ \_ _ -> do
         logger $ "Downloaded image has invalid checksum"
         error "Image checksum mismatch"
 

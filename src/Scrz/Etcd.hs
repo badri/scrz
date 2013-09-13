@@ -13,39 +13,20 @@ import Scrz.Utils
 import Scrz.Types
 import Scrz.Commands ()
 
-withMaybe :: Maybe a -> (a -> IO ()) -> IO ()
-withMaybe Nothing  _ = return ()
-withMaybe (Just a) f = f a
-
 baseUrl :: String
 baseUrl = "http://localhost:4001/v1"
 
 -- | The response that etcd can return to clients. Inside the etcd sources,
 -- the response is represented with a single type (store/store.go).
 data Response = Response
-  { rAction    :: String
-  , rKey       :: String
-  , rDir       :: Maybe Bool
-    -- ^ Present and true if the key has no value itself, but has subkeys.
-    --   I've never seen it present and false.
-
-  , rPrevValue :: Maybe String
+  { rKey       :: String
   , rValue     :: Maybe String
-  , rNewKey    :: Maybe Bool
-  , rTTL       :: Maybe Int
-  , rIndex     :: Int
   } deriving (Show)
 
 instance FromJSON Response where
     parseJSON (Object o) = Response
-        <$> o .:  "action"
-        <*> o .:  "key"
-        <*> o .:? "dir"
-        <*> o .:? "prevValue"
+        <$> o .:  "key"
         <*> o .:? "value"
-        <*> o .:? "newKey"
-        <*> o .:? "ttl"
-        <*> o .:  "index"
 
     parseJSON _ = fail "Etcd/Response"
 
@@ -53,14 +34,14 @@ rValueLB :: Response -> LB.ByteString
 rValueLB response = LC8.pack $ fromJust $ rValue response
 
 listKeys :: String -> IO [String]
-listKeys path = (flip catch) (\(e :: SomeException) -> return []) $ do
+listKeys path = (flip catch) (\(_ :: SomeException) -> return []) $ do
     reply' <- getJSON $ baseUrl ++ "/keys" ++ path
     case reply' :: Maybe [Response] of
         Nothing -> return []
         Just reply -> return $ map rKey reply
 
 getKey :: String -> IO (Maybe Response)
-getKey path = (flip catch) (\(e :: SomeException) -> return Nothing) $ do
+getKey path = (flip catch) (\(_ :: SomeException) -> return Nothing) $ do
     getJSON $ baseUrl ++ "/keys" ++ path
 
 putKey :: String -> String -> IO ()

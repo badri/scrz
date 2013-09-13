@@ -237,7 +237,7 @@ run ("run":args) = do
     (ptm, pts) <- openPseudoTerminal
     attrs      <- setRawModeFd stdInput
 
-    response <- finally (sendRunCommand ptm) (freeResources ptm pts attrs) `catch` \(e :: SomeException) -> return ErrorResponse
+    response <- finally (sendRunCommand ptm) (freeResources ptm pts attrs) `catch` \(_ :: SomeException) -> return ErrorResponse
 
     logger $ show response
     handleResponse response `onException` do

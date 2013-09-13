@@ -192,10 +192,10 @@ processCommand runtime (Start id) = do
             return EmptyResponse
 
 
-processCommand runtime (Run image command pts mounts) = do
+processCommand runtime (Run url command pts mounts) = do
     handle <- openFile pts ReadWriteMode
-    let meta = ImageMeta image "" 0
-    let image = Image (mkImageId meta) (Just meta)
+    let meta = ImageMeta url "" 0
+    let image = imageFromMeta meta
 
     let service = Service { serviceId = 0
       , serviceRevision = 0
