@@ -193,8 +193,9 @@ run [ "list-images" ] = do
 
 
 run [ "download-image", url, checksum, sizeStr ] = do
-    let meta = ImageMeta url checksum $ read sizeStr
-    ensureImage $ Image (mkImageId meta) (Just meta)
+    let image = imageFromMeta $ ImageMeta url checksum $ read sizeStr
+    ensureImage image
+    logger $ "Image available under id " ++ imageId image
 
 run [ "destroy-image", localImageId ] = do
     destroyImage localImageId
