@@ -1,4 +1,26 @@
-module Scrz.Image where
+
+-- | Functions related to handling images.
+
+module Scrz.Image
+  (
+    -- * Creating images
+    imageFromMeta
+
+    -- * Misc stuff
+  , loadImages
+  , cloneImage
+  , deleteImageClone
+  , verifyContent
+  , packImage
+  , ensureImage
+  , snapshotContainerImage
+  , destroyImage
+
+    -- * Interenal functions, should not be exported
+  , imageBasePath
+  , imageVolumePath
+
+  ) where
 
 import           Data.Aeson
 
@@ -47,23 +69,11 @@ imageVolumePath = imageVolumePathS . imageId
 imageMetaPathS :: String -> String
 imageMetaPathS image = imageBasePathS image </> "meta"
 
-imageMetaPath :: Image -> String
-imageMetaPath = imageMetaPathS . imageId
 
-
-localImage :: String -> Image
-localImage imgId = Image imgId Nothing
-
+-- | Create a new image given the meta description of it. The image id is
+-- automatically created by hashing the meta record.
 imageFromMeta :: ImageMeta -> Image
 imageFromMeta meta = Image (mkImageId meta) (Just meta)
-
-
-getImage :: String -> IO Image
-getImage id' = do
-    images <- loadImages
-    case M.lookup id' images of
-        Nothing -> error "Image not found"
-        Just x -> return x
 
 
 loadImages :: IO (Map String Image)
@@ -77,7 +87,7 @@ loadImages = do
     loadImageMeta :: String -> IO Image
     loadImageMeta imgId = do
         meta <- readMetaFile imgId
-        return $ maybe (localImage imgId) (Image imgId . Just) meta
+        return $ maybe (Image imgId Nothing) (Image imgId . Just) meta
 
 
 cloneImage :: Image -> String -> IO ()
