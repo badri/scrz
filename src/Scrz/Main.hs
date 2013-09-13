@@ -183,7 +183,8 @@ run [ "list-images" ] = do
 
     toRow :: (String, Image) -> IO [String]
     toRow (localImageId, image) = do
-        ok <- verifyContent image "✓" $ \_ _ -> return "✗"
+        let meta = imageMeta image
+        ok <- maybe (return "-") (const $ verifyContent image "✓" $ \_ _ -> return "✗") meta
 
         return [ localImageId
                , ok
@@ -197,6 +198,14 @@ run [ "download-image", url, checksum, sizeStr ] = do
 
 run [ "destroy-image", localImageId ] = do
     destroyImage localImageId
+
+run [ "clone-image", localImageId, newImageId ] = do
+    let srcImage = Image localImageId Nothing
+    let dstImage = Image newImageId Nothing
+
+    createDirectoryIfMissing True (imageBasePath dstImage)
+    cloneImage srcImage (imageVolumePath dstImage)
+
 
 run [ "ipvs", addr, url ] = do
     runtime <- mkProxyRuntime addr

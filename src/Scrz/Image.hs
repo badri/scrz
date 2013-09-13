@@ -82,7 +82,6 @@ loadImages = do
 
 cloneImage :: Image -> String -> IO ()
 cloneImage image path = do
-
     p <- exec "btrfs" [ "subvolume", "snapshot", imageVolumePath image, path ]
     fatal p
 
