@@ -175,7 +175,7 @@ run [ "console", id' ] = do
 run [ "list-images" ] = do
     images <- loadImages
 
-    let headers = [ "ID", "CSUM",  "URL" ]
+    let headers = [ "ID", "SIZE", "CSUM",  "URL" ]
     rows <- mapM toRow $ M.toList images
     tabWriter $ headers : rows
 
@@ -187,6 +187,7 @@ run [ "list-images" ] = do
         ok <- maybe (return "-") (const $ verifyContent image "✓" $ \_ _ -> return "✗") meta
 
         return [ localImageId
+               , maybe "-" (show . imageSize) meta
                , ok
                , maybe "-" imageUrl (imageMeta image)
                ]
