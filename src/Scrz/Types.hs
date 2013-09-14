@@ -206,8 +206,8 @@ data Container = Container
   }
 
 implementsService :: Authority -> Service -> Container -> Bool
-implementsService authority service container =
-    (containerAuthority container) == authority && (containerService container) == service
+implementsService authority service Container{..} =
+    containerAuthority == authority && containerService == service
 
 instance ToJSON Container where
     toJSON Container{..} = object

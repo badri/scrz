@@ -23,9 +23,9 @@ import Scrz.Btrfs
 
 -- | Allocate all backing volumes for the given service. This function may
 -- throw an exception.
-allocateVolumes :: TVar Runtime -> Service -> IO [ BackingVolume ]
-allocateVolumes runtime service = do
-    forM (serviceVolumes service) (allocateVolume runtime)
+allocateVolumes :: TVar Runtime -> [ Volume ] -> IO [ BackingVolume ]
+allocateVolumes runtime volumes = do
+    forM volumes (allocateVolume runtime)
 
 
 -- Release all backing volumes.
