@@ -96,28 +96,18 @@ releasePorts runtime addr internalPorts externalPorts =
 -- Private symbols
 
 allocatePort :: TVar Runtime -> Port -> IO Int
-allocatePort runtime Port{..} = atomically $ do
-    maybe randomFromSet returnIfAvailable externalPort
-
+allocatePort runtime Port{..} = maybe randomFromSet return externalPort
   where
 
     -- Allocation a random port from the set. It's not actually random but the
     -- next one in the set.
-    randomFromSet = do
+    randomFromSet = atomically $ do
         rt@Runtime{..} <- readTVar runtime
 
         -- FIXME: We may have run out of network ports. 'head' here may throw
         -- an exception.
         let ext = head $ S.toList networkPorts
         writeTVar runtime $ rt { networkPorts = S.delete ext networkPorts }
-        return ext
-
-    -- Check if the given port is available. throw an exception if not.
-    returnIfAvailable ext = do
-        Runtime{..} <- readTVar runtime
-        unless (S.member ext networkPorts) $ do
-            error $ "Exteral port " ++ (show ext) ++ " already allocated"
-
         return ext
 
 
