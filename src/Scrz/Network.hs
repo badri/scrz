@@ -1,6 +1,21 @@
-module Scrz.Network where
+module Scrz.Network
+  (
 
-import           Data.Maybe
+    initializeNetwork
+  , cleanupNetwork
+
+  , allocateAddress
+  , releaseAddress
+
+  , allocatePort
+  , releasePort
+
+  , mapPorts
+  , unmapPorts
+
+  ) where
+
+
 import           Data.Set (Set)
 import qualified Data.Set as S
 
@@ -51,35 +66,47 @@ initializeNetwork = do
 
 allocateAddress :: TVar Runtime -> IO IPv4
 allocateAddress runtime = atomically $ do
-    rt <- readTVar runtime
-    let addresses = networkAddresses rt
-    let ret = head $ S.toList addresses
-    writeTVar runtime $ rt { networkAddresses = S.delete ret addresses }
-    return ret
+    rt@Runtime{..} <- readTVar runtime
+    let addr = head $ S.toList networkAddresses
+    writeTVar runtime $ rt { networkAddresses = S.delete addr networkAddresses }
+    return addr
+
 
 releaseAddress :: TVar Runtime -> IPv4 -> IO ()
 releaseAddress runtime addr = atomically $ do
     modifyTVar runtime $ \x -> x { networkAddresses = S.insert addr (networkAddresses x)}
 
+
 allocatePort :: TVar Runtime -> Port -> IO Int
-allocatePort runtime port = atomically $ do
-    maybe randomFromSet return (externalPort port)
+allocatePort runtime Port{..} = atomically $ do
+    maybe randomFromSet returnIfAvailable externalPort
 
   where
+
+    -- Allocation a random port from the set. It's not actually random but the
+    -- next one in the set.
     randomFromSet = do
-        rt <- readTVar runtime
-        let ports = networkPorts rt
-        let ext = fromMaybe (head $ S.toList ports) (externalPort port)
-        if S.member ext ports
-            then do
-                writeTVar runtime $ rt { networkPorts = S.delete ext ports }
-                return ext
-            else
-                error $ "Can not allocate external port " ++ (show $ externalPort port)
+        rt@Runtime{..} <- readTVar runtime
+
+        -- FIXME: We may have run out of network ports. 'head' here may throw
+        -- an exception.
+        let ext = head $ S.toList networkPorts
+        writeTVar runtime $ rt { networkPorts = S.delete ext networkPorts }
+        return ext
+
+    -- Check if the given port is available. throw an exception if not.
+    returnIfAvailable ext = do
+        Runtime{..} <- readTVar runtime
+        unless (S.member ext networkPorts) $ do
+            error $ "Exteral port " ++ (show ext) ++ " already allocated"
+
+        return ext
+
 
 releasePort :: TVar Runtime -> Int -> IO ()
 releasePort runtime port = atomically $ do
     modifyTVar runtime $ \x -> x { networkPorts = S.insert port (networkPorts x)}
+
 
 mapPorts :: IPv4 -> [ (Int,Port) ] -> IO ()
 mapPorts addr ports = do
