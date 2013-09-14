@@ -7,11 +7,8 @@ module Scrz.Network
   , allocateAddress
   , releaseAddress
 
-  , allocatePort
-  , releasePort
-
-  , mapPorts
-  , unmapPorts
+  , allocatePorts
+  , releasePorts
 
   ) where
 
@@ -30,18 +27,8 @@ import Scrz.Utils
 import Scrz.Network.IPv4
 
 
-iptables :: (ProcessHandle -> IO ()) -> [String] -> IO ()
-iptables f args = void $ exec "iptables" args >>= f
-
-cleanupNetwork :: IO ()
-cleanupNetwork = do
-    logger "Cleaning up iptables configuration"
-
-    iptables wait [ "-t", "nat", "-D", "PREROUTING", "-m", "addrtype", "--dst-type", "LOCAL", "-j", "SCRZ" ]
-    iptables wait [ "-t", "nat", "-D", "OUTPUT", "-j", "SCRZ" ]
-
-    iptables wait [ "-t", "nat", "-F", "SCRZ" ]
-    iptables wait [ "-t", "nat", "-X", "SCRZ" ]
+------------------------------------------------------------------------------
+-- Exported symbols
 
 
 initializeNetwork :: IO (IPv4, Set IPv4, Set Int)
@@ -64,6 +51,18 @@ initializeNetwork = do
     ports     = S.fromDistinctAscList [ 50000 .. 59999 ]
 
 
+cleanupNetwork :: IO ()
+cleanupNetwork = do
+    logger "Cleaning up iptables configuration"
+
+    iptables wait [ "-t", "nat", "-D", "PREROUTING", "-m", "addrtype", "--dst-type", "LOCAL", "-j", "SCRZ" ]
+    iptables wait [ "-t", "nat", "-D", "OUTPUT", "-j", "SCRZ" ]
+
+    iptables wait [ "-t", "nat", "-F", "SCRZ" ]
+    iptables wait [ "-t", "nat", "-X", "SCRZ" ]
+
+
+
 allocateAddress :: TVar Runtime -> IO IPv4
 allocateAddress runtime = atomically $ do
     rt@Runtime{..} <- readTVar runtime
@@ -76,6 +75,23 @@ releaseAddress :: TVar Runtime -> IPv4 -> IO ()
 releaseAddress runtime addr = atomically $ do
     modifyTVar runtime $ \x -> x { networkAddresses = S.insert addr (networkAddresses x)}
 
+
+
+allocatePorts :: TVar Runtime -> IPv4 -> [ Port ] -> IO [ Int ]
+allocatePorts runtime addr ports = do
+    externalPorts <- forM ports (allocatePort runtime)
+    mapPorts addr (zip externalPorts ports)
+    return externalPorts
+
+
+releasePorts :: TVar Runtime -> IPv4 -> [ Port ] -> [ Int ] -> IO ()
+releasePorts runtime addr internalPorts externalPorts = do
+    unmapPorts addr (zip externalPorts internalPorts)
+    mapM_ (releasePort runtime) externalPorts
+
+
+-----------------------------------------------------------------------------
+-- Private symbols
 
 allocatePort :: TVar Runtime -> Port -> IO Int
 allocatePort runtime Port{..} = atomically $ do
@@ -123,3 +139,7 @@ updateForwardRule rule addr src dst = iptables wait
     [ "-t", "nat", rule, "SCRZ", "-p", "tcp", "--dport", show src
     , "-j", "DNAT", "--to-destination", (show addr) ++ ":" ++ (show dst)
     ]
+
+
+iptables :: (ProcessHandle -> IO ()) -> [String] -> IO ()
+iptables f args = void $ exec "iptables" args >>= f

@@ -40,8 +40,7 @@ createContainer runtime authority service@Service{..} image = do
 
  -- Allocate runtime resources (address, ports, volumes etc).
     addr <- allocateAddress runtime
-    externalPorts <- forM servicePorts (allocatePort runtime)
-    mapPorts addr (zip externalPorts servicePorts)
+    externalPorts <- allocatePorts runtime addr servicePorts
     backingVolumes' <- allocateVolumes runtime serviceVolumes
 
 
@@ -139,8 +138,7 @@ destroyContainer runtime container = do
     let Service{..} = containerService
 
  -- Release runtime resources.
-    unmapPorts containerAddress (zip containerPorts servicePorts)
-    mapM_ (releasePort runtime) containerPorts
+    releasePorts runtime containerAddress servicePorts containerPorts
     releaseAddress runtime containerAddress
     releaseVolumes runtime containerVolumes
 
