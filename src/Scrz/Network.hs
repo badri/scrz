@@ -78,16 +78,18 @@ releaseAddress runtime addr = atomically $ do
 
 
 allocatePorts :: TVar Runtime -> IPv4 -> [ Port ] -> IO [ Int ]
-allocatePorts runtime addr ports = do
-    externalPorts <- forM ports (allocatePort runtime)
-    mapPorts addr (zip externalPorts ports)
-    return externalPorts
+allocatePorts runtime addr ports = forM ports $ \port -> do
+    externalPort <- allocatePort runtime port
+    updateForwardRule "-A" addr externalPort (internalPort port)
+    return externalPort
 
 
 releasePorts :: TVar Runtime -> IPv4 -> [ Port ] -> [ Int ] -> IO ()
-releasePorts runtime addr internalPorts externalPorts = do
-    unmapPorts addr (zip externalPorts internalPorts)
-    mapM_ (releasePort runtime) externalPorts
+releasePorts runtime addr internalPorts externalPorts =
+    forM_ (zip internalPorts externalPorts) $ \(Port{..}, ext) -> do
+        updateForwardRule "-D" addr ext internalPort
+        releasePort runtime ext
+
 
 
 -----------------------------------------------------------------------------
@@ -122,16 +124,6 @@ allocatePort runtime Port{..} = atomically $ do
 releasePort :: TVar Runtime -> Int -> IO ()
 releasePort runtime port = atomically $ do
     modifyTVar runtime $ \x -> x { networkPorts = S.insert port (networkPorts x)}
-
-
-mapPorts :: IPv4 -> [ (Int,Port) ] -> IO ()
-mapPorts addr ports = do
-    mapM_ (\x -> updateForwardRule "-A" addr (fst x) (internalPort $ snd x)) ports
-
-
-unmapPorts :: IPv4 -> [ (Int,Port) ] -> IO ()
-unmapPorts addr ports = do
-    mapM_ (\x -> updateForwardRule "-D" addr (fst x) (internalPort $ snd x)) ports
 
 
 updateForwardRule :: String -> IPv4 -> Int -> Int -> IO ()
