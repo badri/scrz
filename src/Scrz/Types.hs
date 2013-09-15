@@ -28,6 +28,19 @@ data Image = Image
   , imageMeta :: Maybe ImageMeta
   } deriving (Show, Eq)
 
+instance FromJSON Image where
+    parseJSON (Object o) = Image
+        <$> o .:  "id"
+        <*> o .:? "meta"
+
+    parseJSON _ = fail "Image"
+
+instance ToJSON Image where
+    toJSON Image{..} = object
+        [ "id"   .= imageId
+        , "meta" .= imageMeta
+        ]
+
 data ImageMeta = ImageMeta
   { imageUrl :: String
   , imageChecksum :: String
@@ -42,7 +55,7 @@ instance FromJSON ImageMeta where
         <*> o .: "checksum"
         <*> o .: "size"
 
-    parseJSON _ = fail "Image"
+    parseJSON _ = fail "ImageMeta"
 
 instance ToJSON ImageMeta where
     toJSON image = object
@@ -125,7 +138,10 @@ instance FromJSON Volume where
     parseJSON _ = fail "Volume"
 
 instance ToJSON Volume where
-    toJSON = error "ToJSON Volume"
+    toJSON Volume{..} = object
+        [ "path"       .= volumePath
+        , "backing"    .= volumeBacking
+        ]
 
 
 data Service = Service
@@ -159,8 +175,13 @@ instance FromJSON Service where
 
 instance ToJSON Service where
     toJSON Service{..} = object
-        [ "id"        .= serviceId
-        , "revision"  .= serviceRevision
+        [ "id"          .= serviceId
+        , "revision"    .= serviceRevision
+        , "image"       .= serviceImage
+        , "command"     .= serviceCommand
+        , "environment" .= serviceEnvironment
+        , "ports"       .= servicePorts
+        , "volumes"     .= serviceVolumes
         ]
 
 

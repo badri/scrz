@@ -62,8 +62,8 @@ sendCommand :: Command -> IO Response
 sendCommand command = do
     sock <- clientSocket
 
-    sendCommand_ sock `catch` \(_ :: SomeException) -> do
-        logger $ "Got exception"
+    sendCommand_ sock `catch` \(e :: SomeException) -> do
+        logger $ "Got exception: " ++ show e
         return ErrorResponse
 
   where

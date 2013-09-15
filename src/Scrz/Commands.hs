@@ -86,12 +86,43 @@ instance ToJSON Command where
         let command = "wait" :: String
         in object ["command" .= command, "id" .= id]
 
+data ListContainerItem = ListContainerItem
+  { lciId :: String
+  , lciService :: Service
+  , lciImage :: Image
+  , lciRunning :: Bool
+  } deriving (Show)
+
+instance ToJSON ListContainerItem where
+    toJSON ListContainerItem{..} = object
+        [ "id" .= lciId
+        , "service" .= lciService
+        , "image" .= lciImage
+        , "running" .= lciRunning
+        ]
+
+instance FromJSON ListContainerItem where
+    parseJSON (Object o) = ListContainerItem
+        <$> o .: "id"
+        <*> o .: "service"
+        <*> o .: "image"
+        <*> o .: "running"
+
+    parseJSON _ = fail "ListContainerItem"
+
+listContainerItem :: TVar Container -> IO ListContainerItem
+listContainerItem container = do
+    Container{..} <- atomically $ readTVar container
+    let Service{..} = containerService
+    return $ ListContainerItem containerId containerService containerImage (isJust containerProcess)
+
 data Response
   = EmptyResponse
   | ErrorResponse
   | CreateContainerResponse String
-  | ListContainersResponse [ [ String ] ]
+  | ListContainersResponse [ ListContainerItem ]
   deriving (Show)
+
 
 instance FromJSON Response where
     parseJSON (Object o) = do
@@ -103,7 +134,7 @@ instance FromJSON Response where
         parseResponse :: String -> Parser Response
         parseResponse "empty" = return EmptyResponse
         parseResponse "create-container" = CreateContainerResponse <$> (o .: "id")
-        parseResponse "list-containers" = ListContainersResponse <$> (o .: "data")
+        parseResponse "list-containers" = ListContainersResponse <$> (o .: "containers")
         parseResponse _ = fail "Response"
 
     parseJSON _ = fail "Response"
@@ -123,7 +154,7 @@ instance ToJSON Response where
 
     toJSON (ListContainersResponse d) =
         let response = "list-containers" :: String
-        in object ["response" .= response, "data" .= d]
+        in object ["response" .= response, "containers" .= d]
 
 
 processCommand :: TVar Runtime -> Command -> IO Response
@@ -141,20 +172,8 @@ processCommand runtime (CreateContainer service) = do
 
 processCommand runtime ListContainers = do
     rt <- atomically $ readTVar runtime
-    rows <- mapM dumpContainer $ M.elems (containers rt)
+    rows <- mapM listContainerItem $ M.elems (containers rt)
     return $ ListContainersResponse rows
-
-  where
-
-    dumpContainer :: TVar Container -> IO [ String ]
-    dumpContainer container = do
-        c <- atomically $ readTVar container
-
-        let cid = containerId c
-        let iid = mkImageId $ serviceImage $ containerService c
-        let cmd = head $ serviceCommand $ containerService c
-        let sta = if isJust $ containerProcess c then "running" else "stopped"
-        return [ cid, iid, cmd, sta ]
 
 processCommand runtime (StopContainer id) = do
     rt <- atomically $ readTVar runtime
@@ -237,10 +256,18 @@ printResponse ErrorResponse = do
 printResponse (CreateContainerResponse id) = do
     putStrLn $ "Created container " ++ id
 
-printResponse (ListContainersResponse rows) = do
+printResponse (ListContainersResponse containers) = do
     let headers = [ "ID", "IMAGE", "COMMAND", "STATUS" ]
+    let rows    = map listContainerItemRow containers
     tabWriter $ headers : rows
 
+listContainerItemRow :: ListContainerItem -> [ String ]
+listContainerItemRow ListContainerItem{..} =
+    [ lciId
+    , imageId lciImage
+    , intercalate " " (serviceCommand lciService)
+    , if lciRunning then "running" else "stopped"
+    ]
 
 tabWriter :: [ [ String ] ] -> IO ()
 tabWriter d = do
