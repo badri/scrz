@@ -3,10 +3,13 @@ module Scrz.Proxy where
 import qualified Data.List as L
 import Data.Aeson
 import Control.Applicative
+import Control.Exception
+import Control.Concurrent
 import Control.Concurrent.STM
 import Control.Monad
 
 import Scrz.Log
+import Scrz.Http
 import Scrz.Utils
 
 
@@ -99,3 +102,25 @@ mergeProxyConfig runtime config = do
         unless exists $ do
             insertProxyService runtime pp
             logger $ show pp
+
+
+ipvsProxy :: String -> String -> IO ()
+ipvsProxy addr url = do
+    runtime <- mkProxyRuntime addr
+
+    forever $ do
+        putStrLn "arst"
+        syncProxyConfig runtime `catch` \(e :: SomeException) -> do
+            logger $ "Syncing proxy config with remote authority failed: " ++ show e
+
+        threadDelay $ 10 * 1000 * 1000
+
+  where
+
+    syncProxyConfig runtime = do
+        fqdn' <- fullyQualifiedDomainName
+        withMaybe fqdn' $ \fqdn -> do
+            config' <- getJSON $ url ++ "/api/hosts/" ++ fqdn ++ "/proxy-config"
+            print config'
+            withMaybe config' $ \config -> do
+                mergeProxyConfig runtime config

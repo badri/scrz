@@ -69,3 +69,7 @@ fullyQualifiedDomainName = do
     hostName <- Just <$> getHostName
     addrInfo <- head <$> getAddrInfo Nothing hostName Nothing
     fst <$> getNameInfo [] True False (addrAddress addrInfo)
+
+withMaybe :: Maybe a -> (a -> IO ()) -> IO ()
+withMaybe Nothing  _ = return ()
+withMaybe (Just a) f = f a

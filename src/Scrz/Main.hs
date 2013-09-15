@@ -1,12 +1,5 @@
 module Main where
 
-import qualified Data.List as L
-import qualified Data.Map as M
-import qualified Data.Aeson as A
-import qualified Data.ByteString.Lazy as LBS
-import           Data.Time.Format.Human
-
-import Control.Applicative
 import Control.Monad
 import System.Environment
 import System.Directory
@@ -16,226 +9,46 @@ import System.Posix.Terminal (openPseudoTerminal, getSlaveTerminalName)
 
 import Control.Exception
 import Control.Concurrent
-import Control.Concurrent.STM
-
-import Network.Socket
 
 import Scrz.Protocol
-import Scrz.Container
-import Scrz.Http
+import Scrz.Commands
 import Scrz.Image
 import Scrz.Log
-import Scrz.Network
 import Scrz.Proxy
-import Scrz.Signal
 import Scrz.Socket
 import Scrz.Terminal
 import Scrz.Types
 import Scrz.Utils
-import Scrz.Etcd
+import Scrz.Supervisor
 
-withMaybe :: Maybe a -> (a -> IO ()) -> IO ()
-withMaybe Nothing  _ = return ()
-withMaybe (Just a) f = f a
-
-createControlThread :: TMVar () -> TVar Runtime -> Maybe String -> IO ThreadId
-createControlThread mvar runtime remoteAuthorityUrl = do
-    void $ forkIO $ forever $ loadLocalConfig >> threadDelay delay
-
-    withMaybe remoteAuthorityUrl $ \url -> do
-        void $ forkIO $ forever $ do
-            syncRemoteConfig url `catch` \(e :: SomeException) -> do
-                logger $ "Syncing with remote authority failed: " ++ show e
-
-            threadDelay delay
-
-    sock <- serverSocket
-    forkFinally (forever $ handleClient runtime sock) (cleanup sock)
-
-
-  where
-
-    delay = 10 * 1000 * 1000
-
-    cleanup :: Socket -> Either SomeException () -> IO ()
-    cleanup sock ex = do
-        logger $ show ex
-        close sock
-        removeFile controlSocketPath
-        atomically $ putTMVar mvar ()
-
-    loadLocalConfig = do
-        conf <- LBS.readFile "/etc/scrz/config.json"
-
-        case A.decode conf :: Maybe Config of
-            Nothing -> putStrLn "Could not decode config"
-            Just config -> mergeConfig runtime Local config
-
-    syncRemoteConfig url = do
-        services <- listServices
-        mergeConfig runtime (Remote url) (Config services)
-
-        rt <- atomically $ readTVar runtime
-        updateRuntime rt
-
-
-mergeConfig :: TVar Runtime -> Authority -> Config -> IO ()
-mergeConfig runtime authority config = do
-    -- Remove old services from the local runtime.
-    rt <- atomically $ readTVar runtime
-    forM_ (M.elems $ containers rt) $ \container -> do
-        c <- atomically $ readTVar container
-
-        let matchAuthority = authority == containerAuthority c
-        let hasService = L.elem (containerService c) (configServices config)
-
-        when (matchAuthority && not hasService) $ do
-            logger $ "Service removed from the configuration, stopping container"
-            stopContainer container
-            destroyContainer runtime container
-
-    -- Add new services from the authority.
-    forM_ (configServices config) addService
-
-  where
-
-    addService :: Service -> IO ()
-    addService service = do
-        rt <- atomically $ readTVar runtime
-        exists <- hasContainer rt authority service
-
-        unless exists $ do
-            let image = imageFromMeta $ serviceImage service
-            container <- createContainer runtime authority service image
-            startContainer container Nothing
-            id' <- atomically $ containerId <$> readTVar container
-            logger $ show id'
-
-
-initializeRuntime :: IO Runtime
-initializeRuntime = do
-    (bridgeAddress', networkAddresses', networkPorts') <- initializeNetwork
-
-    return $ Runtime
-      { bridgeAddress     = bridgeAddress'
-      , networkAddresses  = networkAddresses'
-      , networkPorts      = networkPorts'
-      , backingVolumes    = M.empty
-      , containers        = M.empty
-      }
-
-
-startSupervisor :: Maybe String -> IO ()
-startSupervisor remoteAuthorityUrl = do
-    runtime <- newTVarIO =<< initializeRuntime
-
-    mvar <- newEmptyTMVarIO
-    controlThread <- createControlThread mvar runtime remoteAuthorityUrl
-    setupSignalHandlers controlThread
-
-    -- Wait for the control thread to finish.
-    atomically $ takeTMVar mvar
-
-    rt <- atomically $ readTVar runtime
-    mapM_ (\x -> stopContainer x >> destroyContainer runtime x) $ M.elems (containers rt)
-
-    cleanupNetwork
 
 
 run :: [ String ] -> IO ()
-run [ "supervisor" ] = startSupervisor Nothing
-run [ "supervisor", remoteAuthorityUrl ] = startSupervisor $ Just remoteAuthorityUrl
 
-run [ "list-containers" ] = do
-    void $ sendCommand ListContainers >>= printResponse
+run [ "supervisor" ]                 = startSupervisor Nothing
+run [ "supervisor", url ]            = startSupervisor (Just url)
 
-run [ "ps" ] = do
-    void $ sendCommand ListContainers >>= printResponse
+run [ "ipvs", addr, url ]            = ipvsProxy addr url
 
-run [ "inspect", id' ] = do
-    ListContainersResponse containers <- sendCommand ListContainers
-    let Just container = L.find (\x -> id' == containerId x) containers
+run [ "inspect", id' ]               = inspectContainer id'
+run [ "ps" ]                         = listContainers
+run [ "list-containers" ]            = listContainers
+run [ "stop-container", id' ]        = stopContainer id'
+run [ "destroy-container", id' ]     = destroyContainer id'
+run [ "start", id' ]                 = startContainer id'
+run [ "stop", id' ]                  = stopContainer id'
+run [ "restart", id' ]               = stopContainer id' >> startContainer id'
+run [ "quit" ]                       = quitSupervisor
+run [ "snapshot", container, image ] = snapshotContainer container image
+run [ "pack-image", id' ]            = packImage id'
+run [ "list-images" ]                = listImages
+run [ "destroy-image", id' ]         = destroyImage id'
+run [ "download-image", url, checksum, size ] = downloadImage url checksum (read size)
 
-    let Container{..} = container
-    let Service{..}   = containerService
-    let Image{..}     = containerImage
-    let ImageMeta{..} = maybe (ImageMeta "" "" 0) id imageMeta
-
-    timeDiff <- humanReadableTime containerCreatedAt
-
-    tabWriter [ [ "ID", containerId ]
-              , [ "CREATEDAT", timeDiff ]
-              , [ "IMAGE", imageId ++ " (" ++ imageUrl ++ ")" ]
-              , [ "ADDRESS", show containerAddress ]
-              , [ "COMMAND", L.intercalate " " serviceCommand ]
-              , [ "PORTS", L.intercalate " " (map showPort (zip containerPorts servicePorts)) ]
-              , [ "VOLUMES", L.intercalate " " (map showVolume (zip containerVolumes serviceVolumes)) ]
-              ]
-
-    return ()
-
-  where
-
-    showPort :: (Int, Port) -> String
-    showPort (ext, Port{..}) = show ext ++ "=" ++ show internalPort
-
-    showVolume :: (BackingVolume, Volume) -> String
-    showVolume (backingVolume, Volume{..}) =
-        volumePath ++ " -> " ++ backingVolumePath backingVolume
-
-run [ "stop-container", id' ] = do
-    void $ sendCommand $ StopContainer id'
-
-run [ "destroy-container", id' ] = do
-    void $ sendCommand $ DestroyContainer id'
-
-run [ "start", id' ] = do
-    void $ sendCommand $ Start id'
-
-run [ "stop", id' ] = do
-    void $ sendCommand $ StopContainer id'
-
-run [ "restart", id' ] = do
-    void $ sendCommand $ StopContainer id'
-    void $ sendCommand $ Start id'
-
-run [ "snapshot", container, image ] = do
-    void $ sendCommand $ Snapshot container image
-
-run [ "quit" ] = do
-    void $ sendCommand $ Quit
 
 run [ "console", id' ] = do
     executeFile "lxc-console" True [ "-n", id' ] Nothing
 
-run [ "list-images" ] = do
-    images <- loadImages
-
-    let headers = [ "ID", "SIZE", "CSUM",  "URL" ]
-    rows <- mapM toRow $ M.toList images
-    tabWriter $ headers : rows
-
-  where
-
-    toRow :: (String, Image) -> IO [String]
-    toRow (localImageId, image) = do
-        let meta = imageMeta image
-        ok <- maybe (return "-") (const $ verifyContent image "✓" $ \_ _ -> return "✗") meta
-
-        return [ localImageId
-               , maybe "-" (show . imageSize) meta
-               , ok
-               , maybe "-" imageUrl (imageMeta image)
-               ]
-
-
-run [ "download-image", url, checksum, sizeStr ] = do
-    let image = imageFromMeta $ ImageMeta url checksum $ read sizeStr
-    ensureImage image
-    logger $ "Image available under id " ++ imageId image
-
-run [ "destroy-image", localImageId ] = do
-    destroyImage localImageId
 
 run [ "clone-image", localImageId, newImageId ] = do
     let srcImage = Image localImageId Nothing
@@ -244,30 +57,6 @@ run [ "clone-image", localImageId, newImageId ] = do
     createDirectoryIfMissing True (imageBasePath dstImage)
     cloneImage srcImage (imageVolumePath dstImage)
 
-
-run [ "ipvs", addr, url ] = do
-    runtime <- mkProxyRuntime addr
-
-    forever $ do
-        putStrLn "arst"
-        syncProxyConfig runtime `catch` \(e :: SomeException) -> do
-            logger $ "Syncing proxy config with remote authority failed: " ++ show e
-
-        threadDelay $ 10 * 1000 * 1000
-
-  where
-
-    syncProxyConfig runtime = do
-        fqdn' <- fullyQualifiedDomainName
-        withMaybe fqdn' $ \fqdn -> do
-            config' <- getJSON $ url ++ "/api/hosts/" ++ fqdn ++ "/proxy-config"
-            print config'
-            withMaybe config' $ \config -> do
-                mergeProxyConfig runtime config
-
-
-run [ "pack-image", id' ] = do
-    packImage id'
 
 run ("run":args) = do
     (ptm, pts) <- openPseudoTerminal
