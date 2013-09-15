@@ -1,4 +1,4 @@
-module Scrz.Commands where
+module Scrz.Protocol where
 
 import Prelude hiding (id)
 import qualified Data.Map as M

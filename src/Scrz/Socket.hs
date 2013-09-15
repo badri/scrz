@@ -13,7 +13,7 @@ import Control.Exception
 
 import Scrz.Log
 import Scrz.Types
-import Scrz.Commands
+import Scrz.Protocol
 
 
 controlSocketPath :: String

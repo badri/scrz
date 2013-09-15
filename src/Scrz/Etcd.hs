@@ -11,7 +11,7 @@ import Control.Concurrent.STM
 import Scrz.Http
 import Scrz.Utils
 import Scrz.Types
-import Scrz.Commands ()
+import Scrz.Protocol ()
 
 baseUrl :: String
 baseUrl = "http://localhost:4001/v1"

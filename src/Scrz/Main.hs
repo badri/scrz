@@ -20,7 +20,7 @@ import Control.Concurrent.STM
 
 import Network.Socket
 
-import Scrz.Commands
+import Scrz.Protocol
 import Scrz.Container
 import Scrz.Http
 import Scrz.Image
