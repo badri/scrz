@@ -4,6 +4,7 @@ import qualified Data.List as L
 import qualified Data.Map as M
 import qualified Data.Aeson as A
 import qualified Data.ByteString.Lazy as LBS
+import           Data.Time.Format.Human
 
 import Control.Applicative
 import Control.Monad
@@ -150,6 +151,37 @@ run [ "list-containers" ] = do
 
 run [ "ps" ] = do
     void $ sendCommand ListContainers >>= printResponse
+
+run [ "inspect", id' ] = do
+    ListContainersResponse containers <- sendCommand ListContainers
+    let Just container = L.find (\x -> id' == containerId x) containers
+
+    let Container{..} = container
+    let Service{..}   = containerService
+    let Image{..}     = containerImage
+    let ImageMeta{..} = maybe (ImageMeta "" "" 0) id imageMeta
+
+    timeDiff <- humanReadableTime containerCreatedAt
+
+    tabWriter [ [ "ID", containerId ]
+              , [ "CREATEDAT", timeDiff ]
+              , [ "IMAGE", imageId ++ " (" ++ imageUrl ++ ")" ]
+              , [ "ADDRESS", show containerAddress ]
+              , [ "COMMAND", L.intercalate " " serviceCommand ]
+              , [ "PORTS", L.intercalate " " (map showPort (zip containerPorts servicePorts)) ]
+              , [ "VOLUMES", L.intercalate " " (map showVolume (zip containerVolumes serviceVolumes)) ]
+              ]
+
+    return ()
+
+  where
+
+    showPort :: (Int, Port) -> String
+    showPort (ext, Port{..}) = show ext ++ "=" ++ show internalPort
+
+    showVolume :: (BackingVolume, Volume) -> String
+    showVolume (backingVolume, Volume{..}) =
+        volumePath ++ " -> " ++ backingVolumePath backingVolume
 
 run [ "stop-container", id' ] = do
     void $ sendCommand $ StopContainer id'
