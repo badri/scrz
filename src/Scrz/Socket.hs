@@ -70,7 +70,7 @@ sendCommand command = do
 
     sendCommand_ sock = do
         sendAll sock (encode command)
-        response <- recv sock 999
+        response <- recv sock 999999
         close sock
         case decode' response of
             Nothing -> error $ "Unable to parse response: " ++ show response
