@@ -1,3 +1,5 @@
+{-# LANGUAGE TemplateHaskell #-}
+
 module Scrz.Types where
 
 import           GHC.Generics (Generic)
@@ -12,35 +14,15 @@ import           Data.Maybe (isJust)
 import           Data.Set (Set)
 import           Data.Word
 
-
 import           Control.Applicative
 import           Control.Concurrent.STM
+
 import           System.Posix.Types
 
+import           Scrz.Aeson
 
--- | An image that can be used to start a container. It has a local id, which
--- is used in the directory name under which the image is stored. The id must
--- be unique amongst all images on a particular host. If the image was created
--- from metadata (see 'imageFromMeta') then the id is automatically generated
--- by hashing the ImageMeta record.
-data Image = Image
-  { imageId :: String
-  , imageMeta :: Maybe ImageMeta
-  } deriving (Show, Eq)
 
-instance FromJSON Image where
-    parseJSON (Object o) = Image
-        <$> o .:  "id"
-        <*> o .:? "meta"
-
-    parseJSON _ = fail "Image"
-
-instance ToJSON Image where
-    toJSON Image{..} = object
-        [ "id"   .= imageId
-        , "meta" .= imageMeta
-        ]
-
+-- ImageMeta {{{
 data ImageMeta = ImageMeta
   { imageUrl :: String
   , imageChecksum :: String
@@ -48,21 +30,7 @@ data ImageMeta = ImageMeta
   } deriving (Show, Eq, Generic)
 
 instance Hashable ImageMeta
-
-instance FromJSON ImageMeta where
-    parseJSON (Object o) = ImageMeta
-        <$> o .: "url"
-        <*> o .: "checksum"
-        <*> o .: "size"
-
-    parseJSON _ = fail "ImageMeta"
-
-instance ToJSON ImageMeta where
-    toJSON image = object
-        [ "url"      .= imageUrl image
-        , "checksum" .= imageChecksum image
-        , "size"     .= imageSize image
-        ]
+$(deriveScrzJSON "image" ''ImageMeta)
 
 
 isCorrectChecksum :: String -> ImageMeta -> Bool
@@ -76,6 +44,20 @@ isCorrectSize size image =
     if imageSize image == 0
         then True
         else size == imageSize image
+-- }}}
+-- Image {{{
+-- | An image that can be used to start a container. It has a local id, which
+-- is used in the directory name under which the image is stored. The id must
+-- be unique amongst all images on a particular host. If the image was created
+-- from metadata (see 'imageFromMeta') then the id is automatically generated
+-- by hashing the ImageMeta record.
+data Image = Image
+  { imageId :: String
+  , imageMeta :: Maybe ImageMeta
+  } deriving (Show, Eq)
+
+$(deriveScrzJSON "image" ''Image)
+
 
 hashChar :: Int -> Char
 hashChar x
@@ -95,7 +77,8 @@ hashString input
 
 mkImageId :: ImageMeta -> String
 mkImageId image = take 13 . hashString . abs . hash $ image
-
+-- }}}
+-- Port {{{
 
 data Port = Port
   { internalPort :: Int
@@ -119,8 +102,8 @@ instance ToJSON Port where
         [ "internal"  .= internalPort
         , "external"  .= externalPort
         ]
-
-
+-- }}}
+-- Volume {{{
 data Volume = Volume
   { volumePath :: String
   -- ^ Path inside the container to mount the volume to.
@@ -130,20 +113,9 @@ data Volume = Volume
   --   supervisor creates a new backing volume.
   } deriving (Show, Eq)
 
-instance FromJSON Volume where
-    parseJSON (Object o) = Volume
-        <$> o .: "path"
-        <*> o .: "backing"
-
-    parseJSON _ = fail "Volume"
-
-instance ToJSON Volume where
-    toJSON Volume{..} = object
-        [ "path"       .= volumePath
-        , "backing"    .= volumeBacking
-        ]
-
-
+$(deriveScrzJSON "volume" ''Volume)
+-- }}}
+-- Service {{{
 data Service = Service
   { serviceId :: Int
   , serviceRevision :: Int
@@ -161,41 +133,16 @@ data Service = Service
   , serviceVolumes :: [ Volume ]
   } deriving (Show, Eq)
 
-instance FromJSON Service where
-    parseJSON (Object o) = Service
-        <$> o .: "id"
-        <*> o .: "revision"
-        <*> o .: "image"
-        <*> o .: "command"
-        <*> o .: "environment"
-        <*> o .: "ports"
-        <*> o .: "volumes"
-
-    parseJSON _ = fail "Service"
-
-instance ToJSON Service where
-    toJSON Service{..} = object
-        [ "id"          .= serviceId
-        , "revision"    .= serviceRevision
-        , "image"       .= serviceImage
-        , "command"     .= serviceCommand
-        , "environment" .= serviceEnvironment
-        , "ports"       .= servicePorts
-        , "volumes"     .= serviceVolumes
-        ]
-
-
+$(deriveScrzJSON "service" ''Service)
+-- }}}
+-- Config {{{
 data Config = Config
   { configServices :: [ Service ]
   } deriving (Show, Eq)
 
-instance FromJSON Config where
-    parseJSON (Object o) = Config
-        <$> o .: "services"
-
-    parseJSON _ = fail "Config"
-
-
+$(deriveScrzJSON "config" ''Config)
+-- }}}
+-- BackingVolume {{{
 data BackingVolume = AdHocVolume String | ManagedVolume
   { backingVolumeId :: String
   }
@@ -203,11 +150,12 @@ data BackingVolume = AdHocVolume String | ManagedVolume
 backingVolumePath :: BackingVolume -> String
 backingVolumePath (AdHocVolume path) = path
 backingVolumePath (ManagedVolume vid) = "/srv/scrz/volumes/" ++ vid
-
-
+-- }}}
+-- Authority {{{
 data Authority = Local | Socket | Remote String
     deriving (Eq)
-
+-- }}}
+-- Container {{{
 data Container = Container
   { containerId :: String
 
@@ -238,10 +186,11 @@ instance ToJSON Container where
         , "service"   .= containerService
         , "port-map"  .= servicePorts containerService
         ]
-
-
+-- }}}
+-- IPv4 {{{
 data IPv4 = IPv4 Word32 deriving (Eq, Ord)
-
+-- }}}
+-- Runtime {{{
 data Runtime = Runtime
   { bridgeAddress :: IPv4
   -- ^ Bridge to which all containers are connected to.
@@ -257,10 +206,10 @@ data Runtime = Runtime
   }
 
 
-
 -- | Return true if the runtime has a container running that implements the
 --   service.
 hasContainer :: Runtime -> Authority -> Service -> IO Bool
 hasContainer runtime authority service = do
     cs <- mapM (atomically . readTVar) (M.elems $ containers runtime)
     return $ isJust $ L.find (implementsService authority service) cs
+-- }}}
