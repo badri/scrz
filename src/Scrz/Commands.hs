@@ -3,7 +3,7 @@ module Scrz.Commands where
 import Prelude hiding (id)
 import qualified Data.Map as M
 import Data.Maybe
-import Data.List (transpose, intercalate)
+import Data.List (intercalate)
 import Data.Aeson
 import Data.Aeson.Types
 import Control.Applicative
@@ -244,20 +244,3 @@ listContainerItemRow Container{..} = do
            , show containerAddress
            , if isJust containerProcess then "running" else "stopped"
            ]
-
-tabWriter :: [ [ String ] ] -> IO ()
-tabWriter d = do
-    let lengths = map maximum $ transpose $ (map (map length) d)
-    mapM_ (writeRow lengths) d
-
-  where
-
-    writeRow :: [ Int ] -> [ String ] -> IO ()
-    writeRow lengths row = do
-        let fields = map expandField (zip lengths row)
-        putStrLn $ intercalate "   " fields
-
-    expandField :: (Int, String) -> String
-    expandField (maxLength, field) = fld ++ trail
-        where fld   = take maxLength field
-              trail = (replicate (maxLength - (length fld)) ' ')
