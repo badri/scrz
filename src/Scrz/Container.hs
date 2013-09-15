@@ -11,6 +11,7 @@ module Scrz.Container
 import Data.Maybe
 import Data.List (intercalate)
 import qualified Data.Map as M
+import Data.Time.Clock
 
 import System.Directory
 import System.IO
@@ -31,6 +32,7 @@ import Scrz.Log
 
 createContainer :: TVar Runtime -> Authority -> Service -> Image -> IO (TVar Container)
 createContainer runtime authority service@Service{..} image = do
+    now <- getCurrentTime
     id' <- newId
 
 
@@ -76,7 +78,7 @@ createContainer runtime authority service@Service{..} image = do
 
 
  -- Register the container in the runtime.
-    container <- newTVarIO $ Container id' authority service image addr externalPorts backingVolumes' Nothing
+    container <- newTVarIO $ Container id' now authority service image addr externalPorts backingVolumes' Nothing
     atomically $ modifyTVar runtime $ \x ->
         x { containers = M.insert id' container (containers x) }
 

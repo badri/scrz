@@ -14,6 +14,7 @@ import           Data.Map (Map)
 import qualified Data.Map as M
 import           Data.Maybe (isJust)
 import           Data.Set (Set)
+import           Data.Time.Clock
 import           Data.Word
 
 import           Text.Printf
@@ -28,6 +29,8 @@ import           Scrz.Aeson
 
 -- IPv4 {{{
 data IPv4 = IPv4 Word32 deriving (Eq, Ord)
+
+-- FIXME: This looks really bad in JSON. We should pretty-print the address.
 $(deriveScrzJSON "" ''IPv4)
 
 instance Show IPv4 where
@@ -173,7 +176,7 @@ $(deriveScrzJSON "config" ''Config)
 -- BackingVolume {{{
 data BackingVolume = AdHocVolume String | ManagedVolume
   { backingVolumeId :: String
-  }
+  } deriving (Show)
 
 $(deriveScrzJSON "backingVolume" ''BackingVolume)
 
@@ -183,13 +186,15 @@ backingVolumePath (ManagedVolume vid) = "/srv/scrz/volumes/" ++ vid
 -- }}}
 -- Authority {{{
 data Authority = Local | Socket | Remote String
-    deriving (Eq)
+    deriving (Eq, Show)
 
 $(deriveScrzJSON "" ''Authority)
 -- }}}
 -- Container {{{
 data Container = Container
   { containerId :: String
+
+  , containerCreatedAt :: UTCTime
 
   , containerAuthority :: Authority
   , containerService :: Service
@@ -206,7 +211,7 @@ data Container = Container
 
   , containerProcess :: Maybe ProcessID
     -- ^ The process (lxc-start) which runs the container.
-  }
+  } deriving (Show)
 
 implementsService :: Authority -> Service -> Container -> Bool
 implementsService authority service Container{..} =

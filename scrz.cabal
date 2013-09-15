@@ -44,6 +44,7 @@ Executable scrz
     Build-depends:  cryptohash           >= 0
     Build-depends:  directory            >= 0
     Build-depends:  filepath             >= 0
+    Build-depends:  friendly-time        >= 0
     Build-depends:  hashable             >= 0
     Build-depends:  http-conduit         >= 0
     Build-depends:  http-types           >= 0

@@ -9,6 +9,7 @@ import Data.Aeson.Types
 import Control.Applicative
 import Control.Concurrent.STM
 import System.IO
+import Data.Time.Format.Human
 
 import Scrz.Log
 import Scrz.Types
@@ -86,41 +87,12 @@ instance ToJSON Command where
         let command = "wait" :: String
         in object ["command" .= command, "id" .= id]
 
-data ListContainerItem = ListContainerItem
-  { lciId :: String
-  , lciService :: Service
-  , lciImage :: Image
-  , lciRunning :: Bool
-  } deriving (Show)
-
-instance ToJSON ListContainerItem where
-    toJSON ListContainerItem{..} = object
-        [ "id" .= lciId
-        , "service" .= lciService
-        , "image" .= lciImage
-        , "running" .= lciRunning
-        ]
-
-instance FromJSON ListContainerItem where
-    parseJSON (Object o) = ListContainerItem
-        <$> o .: "id"
-        <*> o .: "service"
-        <*> o .: "image"
-        <*> o .: "running"
-
-    parseJSON _ = fail "ListContainerItem"
-
-listContainerItem :: TVar Container -> IO ListContainerItem
-listContainerItem container = do
-    Container{..} <- atomically $ readTVar container
-    let Service{..} = containerService
-    return $ ListContainerItem containerId containerService containerImage (isJust containerProcess)
 
 data Response
   = EmptyResponse
   | ErrorResponse
   | CreateContainerResponse String
-  | ListContainersResponse [ ListContainerItem ]
+  | ListContainersResponse [ Container ]
   deriving (Show)
 
 
@@ -172,7 +144,7 @@ processCommand runtime (CreateContainer service) = do
 
 processCommand runtime ListContainers = do
     rt <- atomically $ readTVar runtime
-    rows <- mapM listContainerItem $ M.elems (containers rt)
+    rows <- mapM (atomically . readTVar) $ M.elems (containers rt)
     return $ ListContainersResponse rows
 
 processCommand runtime (StopContainer id) = do
@@ -257,17 +229,21 @@ printResponse (CreateContainerResponse id) = do
     putStrLn $ "Created container " ++ id
 
 printResponse (ListContainersResponse containers) = do
-    let headers = [ "ID", "IMAGE", "COMMAND", "STATUS" ]
-    let rows    = map listContainerItemRow containers
+    let headers = [ "ID", "CREATED", "IMAGE", "COMMAND", "AUTHORITY", "ADDRESS", "STATUS" ]
+    rows <- mapM listContainerItemRow containers
     tabWriter $ headers : rows
 
-listContainerItemRow :: ListContainerItem -> [ String ]
-listContainerItemRow ListContainerItem{..} =
-    [ lciId
-    , imageId lciImage
-    , intercalate " " (serviceCommand lciService)
-    , if lciRunning then "running" else "stopped"
-    ]
+listContainerItemRow :: Container -> IO [ String ]
+listContainerItemRow Container{..} = do
+    timeDiff <- humanReadableTime containerCreatedAt
+    return [ containerId
+           , timeDiff
+           , imageId containerImage
+           , intercalate " " (serviceCommand containerService)
+           , show containerAuthority
+           , show containerAddress
+           , if isJust containerProcess then "running" else "stopped"
+           ]
 
 tabWriter :: [ [ String ] ] -> IO ()
 tabWriter d = do
