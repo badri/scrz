@@ -194,6 +194,8 @@ data Container = Container
   , containerService :: Service
     -- ^ The service description as received from the authority server.
 
+  , containerImage :: Image
+
   , containerAddress :: IPv4
   , containerPorts :: [ Int ]
     -- ^ External ports mapped for the service. Each port in the service has

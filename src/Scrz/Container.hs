@@ -76,7 +76,7 @@ createContainer runtime authority service@Service{..} image = do
 
 
  -- Register the container in the runtime.
-    container <- newTVarIO $ Container id' authority service addr externalPorts backingVolumes' Nothing
+    container <- newTVarIO $ Container id' authority service image addr externalPorts backingVolumes' Nothing
     atomically $ modifyTVar runtime $ \x ->
         x { containers = M.insert id' container (containers x) }
 
