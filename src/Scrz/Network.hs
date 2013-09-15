@@ -24,7 +24,6 @@ import System.Process
 import Scrz.Log
 import Scrz.Types
 import Scrz.Utils
-import Scrz.Network.IPv4
 
 
 ------------------------------------------------------------------------------

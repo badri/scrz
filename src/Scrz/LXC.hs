@@ -2,7 +2,6 @@ module Scrz.LXC where
 
 import Data.List
 import Scrz.Types
-import Scrz.Network.IPv4 ()
 
 lxcConfig :: String -> IPv4 -> IPv4 -> String -> [(BackingVolume,Volume)] -> String
 lxcConfig hostname addr gatewayAddress rootfsPath volumes = unlines $
