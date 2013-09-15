@@ -163,6 +163,10 @@ run [ "start", id' ] = do
 run [ "stop", id' ] = do
     void $ sendCommand $ StopContainer id'
 
+run [ "restart", id' ] = do
+    void $ sendCommand $ StopContainer id'
+    void $ sendCommand $ Start id'
+
 run [ "snapshot", container, image ] = do
     void $ sendCommand $ Snapshot container image
 
