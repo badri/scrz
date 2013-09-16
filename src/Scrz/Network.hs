@@ -48,6 +48,9 @@ initializeNetwork = do
     iptables fatal [ "-t", "nat", "-A", "PREROUTING", "-m", "addrtype", "--dst-type", "LOCAL", "-j", "SCRZ" ]
     iptables fatal [ "-t", "nat", "-A", "POSTROUTING", "-s", addr, "!", "-d", addr, "-j", "MASQUERADE" ]
 
+ -- Enable IPv4 forwarding in the kernel
+    writeFile "/proc/sys/net/ipv4/ip_forward" "1"
+
     return $ ( scrzIfaceAddress, addresses,  ports )
 
   where
