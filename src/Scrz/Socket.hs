@@ -37,7 +37,6 @@ serverSocket = do
 handleClient :: TVar Runtime -> Socket -> IO ()
 handleClient runtime sock = do
     (clientSock, _) <- accept sock
-    logger $ "Accepted connection"
 
     bytes <- recv clientSock 99999
     case decode bytes of
