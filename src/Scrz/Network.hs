@@ -35,8 +35,14 @@ initializeNetwork = do
 
     cleanupNetwork
 
-    logger "Initializing iptables"
+    logger "Initializing network"
 
+ -- Create bridge interface
+    fatal =<< exec "ip" [ "link", "add", "scrz", "type", "bridge" ]
+    fatal =<< exec "ip" [ "addr", "add", show scrzIfaceAddress ++ "/24", "dev", "scrz" ]
+    fatal =<< exec "ip" [ "link", "set", "scrz", "up" ]
+
+ -- Setup iptable rules
     iptables fatal [ "-t", "nat", "-N", "SCRZ" ]
     iptables fatal [ "-t", "nat", "-A", "OUTPUT", "-j", "SCRZ" ]
     iptables fatal [ "-t", "nat", "-A", "PREROUTING", "-m", "addrtype", "--dst-type", "LOCAL", "-j", "SCRZ" ]
@@ -56,12 +62,16 @@ cleanupNetwork :: IO ()
 cleanupNetwork = do
     logger "Cleaning up iptables configuration"
 
+ -- Clean up iptables rules
     iptables wait [ "-t", "nat", "-D", "POSTROUTING", "-s", addr, "!", "-d", addr, "-j", "MASQUERADE" ]
     iptables wait [ "-t", "nat", "-D", "PREROUTING", "-m", "addrtype", "--dst-type", "LOCAL", "-j", "SCRZ" ]
     iptables wait [ "-t", "nat", "-D", "OUTPUT", "-j", "SCRZ" ]
 
     iptables wait [ "-t", "nat", "-F", "SCRZ" ]
     iptables wait [ "-t", "nat", "-X", "SCRZ" ]
+
+ -- Destroy bridge interface
+    wait =<< exec "ip" [ "link", "del", "scrz" ]
 
   where
 
