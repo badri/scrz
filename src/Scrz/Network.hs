@@ -40,11 +40,13 @@ initializeNetwork = do
     iptables fatal [ "-t", "nat", "-N", "SCRZ" ]
     iptables fatal [ "-t", "nat", "-A", "OUTPUT", "-j", "SCRZ" ]
     iptables fatal [ "-t", "nat", "-A", "PREROUTING", "-m", "addrtype", "--dst-type", "LOCAL", "-j", "SCRZ" ]
+    iptables fatal [ "-t", "nat", "-A", "POSTROUTING", "-s", addr, "!", "-d", addr, "-j", "MASQUERADE" ]
 
-    return $ ( toIPv4 [10,1,0,1], addresses,  ports )
+    return $ ( scrzIfaceAddress, addresses,  ports )
 
   where
 
+    addr      = show scrzIfaceAddress
     list      = take 100 $ iterate (1+) 2
     addresses = S.fromList $ map (\x -> toIPv4 [10,1,0,x]) list
     ports     = S.fromDistinctAscList [ 50000 .. 59999 ]
@@ -54,12 +56,16 @@ cleanupNetwork :: IO ()
 cleanupNetwork = do
     logger "Cleaning up iptables configuration"
 
+    iptables wait [ "-t", "nat", "-D", "POSTROUTING", "-s", addr, "!", "-d", addr, "-j", "MASQUERADE" ]
     iptables wait [ "-t", "nat", "-D", "PREROUTING", "-m", "addrtype", "--dst-type", "LOCAL", "-j", "SCRZ" ]
     iptables wait [ "-t", "nat", "-D", "OUTPUT", "-j", "SCRZ" ]
 
     iptables wait [ "-t", "nat", "-F", "SCRZ" ]
     iptables wait [ "-t", "nat", "-X", "SCRZ" ]
 
+  where
+
+    addr = show scrzIfaceAddress
 
 
 allocateAddress :: TVar Runtime -> IO IPv4
@@ -93,6 +99,11 @@ releasePorts runtime addr internalPorts externalPorts =
 
 -----------------------------------------------------------------------------
 -- Private symbols
+
+-- | The bridge address is currently fixed, non-configurable.
+scrzIfaceAddress :: IPv4
+scrzIfaceAddress = toIPv4 [10,1,0,1]
+
 
 allocatePort :: TVar Runtime -> Port -> IO Int
 allocatePort runtime Port{..} = maybe randomFromSet return externalPort
