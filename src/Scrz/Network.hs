@@ -81,10 +81,10 @@ cleanupNetwork = do
     addr = show scrzIfaceAddress
 
 
-allocateAddress :: TVar Runtime -> IO IPv4
-allocateAddress runtime = atomically $ do
+allocateAddress :: TVar Runtime -> Maybe IPv4 -> IO IPv4
+allocateAddress runtime desiredAddress = atomically $ do
     rt@Runtime{..} <- readTVar runtime
-    let addr = head $ S.toList networkAddresses
+    let addr = maybe (head $ S.toList networkAddresses) id desiredAddress
     writeTVar runtime $ rt { networkAddresses = S.delete addr networkAddresses }
     return addr
 

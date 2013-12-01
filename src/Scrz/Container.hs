@@ -41,7 +41,7 @@ createContainer runtime authority service@Service{..} image = do
 
 
  -- Allocate runtime resources (address, ports, volumes etc).
-    addr <- allocateAddress runtime
+    addr <- allocateAddress runtime serviceAddress
     externalPorts <- allocatePorts runtime addr servicePorts
     backingVolumes' <- allocateVolumes runtime serviceVolumes
 

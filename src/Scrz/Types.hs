@@ -156,6 +156,9 @@ data Service = Service
 
   , serviceEnvironment :: [ (String,String) ]
 
+  , serviceAddress :: Maybe IPv4
+  -- ^ If set, the container will use this address.
+
   , servicePorts :: [ Port ]
     -- ^ Network ports that the service requires. When a container starts,
     --   a mapping is created for these ports so that they are exposed to the

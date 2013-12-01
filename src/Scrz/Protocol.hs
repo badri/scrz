@@ -192,6 +192,7 @@ processCommand runtime (Run url command pts mounts) = do
       , serviceRevision = 0
       , serviceImage = meta
       , serviceCommand = command
+      , serviceAddress = Nothing
       , serviceEnvironment = []
       , servicePorts = []
       , serviceVolumes = map (\(a,b) -> Volume a (Just b)) mounts
