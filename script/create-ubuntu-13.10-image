@@ -1,0 +1,54 @@
+#!/bin/sh
+set -e
+
+VOLUME="/srv/scrz/images/ubuntu-13.10-64bit/volume"
+
+if test -d "$VOLUME"; then
+  echo "Image already exists. If you want to delete the image, use this command:"
+  echo
+  echo "  btrfs subvolume delete $VOLUME"
+  echo
+
+  exit
+fi
+
+
+RELEASE="saucy"
+MIRROR="http://mirror.switch.ch/ftp/mirror/ubuntu"
+
+test -d "$(dirname "$VOLUME")" || mkdir -p "$(dirname "$VOLUME")"
+btrfs subvol create "$VOLUME"
+debootstrap --arch=amd64 --include=apt "$RELEASE" "$VOLUME" "$MIRROR"
+
+cat > "$VOLUME/etc/apt/sources.list" <<EOF
+deb $MIRROR  $RELEASE           main restricted universe
+deb $MIRROR  $RELEASE-updates   main restricted universe
+deb $MIRROR  $RELEASE-security  main restricted universe
+EOF
+
+rm "$VOLUME/etc/resolv.conf"
+cat >"$VOLUME/etc/resolv.conf" <<EOF
+nameserver 8.8.8.8
+EOF
+
+>"$VOLUME/lib/init/fstab"
+>"$VOLUME/etc/hostname"
+
+cat >"$VOLUME/sbin/scrz-init" <<EOF
+#!/bin/sh
+set -e
+exec "\$@"
+EOF
+chmod +x "$VOLUME/sbin/scrz-init"
+
+# Because Arch Linux doesn't have /sbin:/bin in PATH, but Ubuntu requires it.
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+export PATH
+
+echo "root:root" | chroot $VOLUME chpasswd
+
+DEBIAN_FRONTEND=noninteractive chroot $VOLUME <<EOF
+apt-get -q -y autoremove
+apt-get -q -y clean
+rm -rf /var/lib/apt/lists/*
+EOF
