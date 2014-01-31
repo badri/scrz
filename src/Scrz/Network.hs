@@ -46,7 +46,7 @@ initializeNetwork = do
     iptables fatal [ "-t", "nat", "-N", "SCRZ" ]
     iptables fatal [ "-t", "nat", "-A", "OUTPUT", "-j", "SCRZ" ]
     iptables fatal [ "-t", "nat", "-A", "PREROUTING", "-m", "addrtype", "--dst-type", "LOCAL", "-j", "SCRZ" ]
-    iptables fatal [ "-t", "nat", "-A", "POSTROUTING", "-s", addr, "!", "-d", addr, "-j", "MASQUERADE" ]
+    iptables fatal [ "-t", "nat", "-A", "POSTROUTING", "-s", net, "!", "-d", net, "-j", "MASQUERADE" ]
 
  -- Enable IPv4 forwarding in the kernel
     writeFile "/proc/sys/net/ipv4/ip_forward" "1"
@@ -56,6 +56,7 @@ initializeNetwork = do
   where
 
     addr      = show scrzIfaceAddress
+    net       = addr ++ "/24"
     list      = take 100 $ iterate (1+) 2
     addresses = S.fromList $ map (\x -> toIPv4 [10,1,0,x]) list
     ports     = S.fromDistinctAscList [ 50000 .. 59999 ]
