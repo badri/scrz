@@ -55,9 +55,9 @@ $(deriveScrzJSON "" ''CPid)
 -- }}}
 -- ImageMeta {{{
 data ImageMeta = ImageMeta
-  { imageUrl :: String
-  , imageChecksum :: String
-  , imageSize :: Int
+  { imageUrl      :: !String
+  , imageChecksum :: !String
+  , imageSize     :: !Int
   } deriving (Show, Eq, Generic)
 
 instance Hashable ImageMeta
@@ -83,8 +83,8 @@ isCorrectSize size image =
 -- from metadata (see 'imageFromMeta') then the id is automatically generated
 -- by hashing the ImageMeta record.
 data Image = Image
-  { imageId :: String
-  , imageMeta :: Maybe ImageMeta
+  { imageId   :: !String
+  , imageMeta :: !(Maybe ImageMeta)
   } deriving (Show, Eq)
 
 $(deriveScrzJSON "image" ''Image)
@@ -148,23 +148,23 @@ $(deriveScrzJSON "volume" ''Volume)
 -- }}}
 -- Service {{{
 data Service = Service
-  { serviceId :: Int
-  , serviceRevision :: Int
-  , serviceImage :: ImageMeta
-  , serviceCommand :: [ String ]
+  { serviceId          :: !Int
+  , serviceRevision    :: !Int
+  , serviceImage       :: !ImageMeta
+  , serviceCommand     :: [ String ]
     -- ^ Command and arguments that are executed to start this service.
 
   , serviceEnvironment :: [ (String,String) ]
 
-  , serviceAddress :: Maybe IPv4
+  , serviceAddress     :: !(Maybe IPv4)
   -- ^ If set, the container will use this address.
 
-  , servicePorts :: [ Port ]
+  , servicePorts       :: [ Port ]
     -- ^ Network ports that the service requires. When a container starts,
     --   a mapping is created for these ports so that they are exposed to the
     --   external network.
 
-  , serviceVolumes :: [ Volume ]
+  , serviceVolumes     :: [ Volume ]
   } deriving (Show, Eq)
 
 $(deriveScrzJSON "service" ''Service)
@@ -188,31 +188,33 @@ backingVolumePath (AdHocVolume path) = path
 backingVolumePath (ManagedVolume vid) = "/srv/scrz/volumes/" ++ vid
 -- }}}
 -- Authority {{{
-data Authority = Local | Socket | Remote String
+data Authority = Local | Socket | Remote !String
     deriving (Eq, Show)
 
 $(deriveScrzJSON "" ''Authority)
 -- }}}
 -- Container {{{
 data Container = Container
-  { containerId :: String
+  { containerId        :: !String
 
-  , containerCreatedAt :: UTCTime
+  , containerCreatedAt :: !UTCTime
 
-  , containerAuthority :: Authority
-  , containerService :: Service
+  , containerAuthority :: !Authority
+  , containerService   :: !Service
     -- ^ The service description as received from the authority server.
 
-  , containerImage :: Image
+  , containerImage     :: !Image
+    -- ^ The image which was used to create the container rootfs. The image
+    --   may not exist anymore on the filesystem.
 
-  , containerAddress :: IPv4
-  , containerPorts :: [ Int ]
+  , containerAddress   :: !IPv4
+  , containerPorts     :: [ Int ]
     -- ^ External ports mapped for the service. Each port in the service has
     --   a corresponding port here.
 
-  , containerVolumes :: [ BackingVolume ]
+  , containerVolumes   :: [ BackingVolume ]
 
-  , containerProcess :: Maybe ProcessID
+  , containerProcess   :: !(Maybe ProcessID)
     -- ^ The process (lxc-start) which runs the container.
   } deriving (Show)
 

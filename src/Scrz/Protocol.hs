@@ -183,25 +183,29 @@ processCommand runtime (Start id) = do
             return EmptyResponse
 
 
-processCommand runtime (Run url command pts mounts) = do
-    handle <- openFile pts ReadWriteMode
-    let meta = ImageMeta url "" 0
-    let image = imageFromMeta meta
-
-    let service = Service { serviceId = 0
-      , serviceRevision = 0
-      , serviceImage = meta
-      , serviceCommand = command
-      , serviceAddress = Nothing
-      , serviceEnvironment = []
-      , servicePorts = []
-      , serviceVolumes = map (\(a,b) -> Volume a (Just b)) mounts
-      }
-
+processCommand runtime (Run imgId command pts mounts) = do
+    handle    <- openFile pts ReadWriteMode
     container <- createContainer runtime Socket service image
+
     startContainer container (Just handle)
+
     id <- atomically $ containerId <$> readTVar container
     return $ CreateContainerResponse id
+
+  where
+    image   = Image imgId Nothing
+    service = Service
+        { serviceId          = 0
+        , serviceRevision    = 0
+        , serviceImage       = ImageMeta "" "" 0
+        , serviceCommand     = command
+        , serviceAddress     = Nothing
+        , serviceEnvironment = []
+        , servicePorts       = []
+        , serviceVolumes     = map (\(a,b) -> Volume a (Just b)) mounts
+        }
+
+
 
 processCommand runtime (Wait id) = do
     rt <- atomically $ readTVar runtime

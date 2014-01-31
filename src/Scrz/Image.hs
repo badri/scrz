@@ -156,14 +156,14 @@ ensureImage image = do
         downloadImage image
 
 
-    -- FIXME: Only verify if we've downloaded the file.
+    -- FIXME: Only verify if we've just downloaded the file.
     verifyContent image () $ \_ _ -> do
         logger $ "Downloaded image has invalid checksum"
         error "Image checksum mismatch"
 
 
-    imageVolumeExists <- doesDirectoryExist $ imageVolumePath image
-    unless imageVolumeExists $ unpackImage image
+    unlessIO (doesDirectoryExist $ imageVolumePath image) $ do
+        unpackImage image
 
 
 downloadImage :: Image -> IO ()
