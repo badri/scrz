@@ -15,6 +15,7 @@ import Data.Time.Clock
 
 import System.Directory
 import System.IO
+import System.Posix.Files
 
 import Control.Monad
 
@@ -50,12 +51,16 @@ createContainer runtime authority service@Service{..} image = do
     let containerPath  = "/srv/scrz/containers/" ++ id'
     let rootfsPath     = containerPath ++ "/rootfs"
     let lxcConfigPath  = containerPath ++ "/config"
+    let initPath       = rootfsPath ++ "/.init"
     gatewayAddress <- atomically $ bridgeAddress <$> readTVar runtime
 
     cloneImage image rootfsPath
 
     let volumes = zip backingVolumes' serviceVolumes
     writeFile lxcConfigPath $ lxcConfig id' addr gatewayAddress rootfsPath volumes
+
+    writeFile initPath $ generateInitFile service
+    setFileMode initPath 0o777
 
 
  -- Create directories for the mount points
@@ -84,6 +89,13 @@ createContainer runtime authority service@Service{..} image = do
 
     return container
 
+generateInitFile :: Service -> String
+generateInitFile Service{..} = "#!/bin/sh\n" ++ body
+  where
+    body = intercalate ";" $ [ "set -e" ] ++ env ++ ["exec " ++ exe ++ " " ++ args]
+    env  = map (\(k,v) -> k ++ "=" ++ v ++ ";export " ++ k) serviceEnvironment
+    exe  = head serviceCommand
+    args = intercalate " " $ tail serviceCommand
 
 startContainer :: TVar Container -> Maybe Handle -> IO ()
 startContainer container mbHandle = do
@@ -98,8 +110,8 @@ startContainer container mbHandle = do
                    , "-f", lxcConfigPath
                    , "-c", "/dev/null"
                    , "--"
-                   , "/sbin/scrz-init"
-                   ] ++ serviceCommand
+                   , "/.init"
+                   ]
 
         p <- execEnv "lxc-start" args [] mbHandle
         void $ forkFinally (waitE p) clearContainerProcess
