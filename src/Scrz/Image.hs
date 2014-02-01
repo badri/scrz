@@ -127,11 +127,6 @@ verifyContent image def action = maybe (return def) doVerifyContent (imageMeta i
             then return def
             else action checksum size
 
-whenIO :: IO Bool -> IO () -> IO ()
-whenIO conditionAction thenAction = do
-    condition <- conditionAction
-    when condition thenAction
-
 unlessIO :: IO Bool -> IO () -> IO ()
 unlessIO conditionAction thenAction = do
     condition <- conditionAction
@@ -140,28 +135,17 @@ unlessIO conditionAction thenAction = do
 
 ensureImage :: Image -> IO ()
 ensureImage image = do
-
-    -- Verify the content file if it already exists. If the verification
-    -- fails, delete the file and we'll try to download it again.
-    whenIO (doesFileExist $ imageContentPath image) $ do
-        logger $ "Verifying existing image content file"
-        verifyContent image () $ \_ _ -> do
-            logger $ "Content file is corrupt, deleting"
-            removeFile (imageContentPath image)
-
-
-    -- Check again if the file exists. It may have been removed if the
-    -- verification just above failed.
     unlessIO (doesFileExist $ imageContentPath image) $ do
         downloadImage image
 
+        -- FIXME: Only verify if we've just downloaded the file.
+        verifyContent image () $ \_ _ -> do
+            logger $ "Downloaded image has invalid checksum"
+            removeFile (imageContentPath image)
+            error "Image checksum mismatch"
 
-    -- FIXME: Only verify if we've just downloaded the file.
-    verifyContent image () $ \_ _ -> do
-        logger $ "Downloaded image has invalid checksum"
-        error "Image checksum mismatch"
 
-
+    -- Download and unpack the content file if it doesn't exist.
     unlessIO (doesDirectoryExist $ imageVolumePath image) $ do
         unpackImage image
 
