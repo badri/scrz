@@ -43,11 +43,12 @@ Executable scrz
     Build-depends:  containers           >= 0
     Build-depends:  cryptohash           >= 0
     Build-depends:  directory            >= 0
+    Build-depends:  etcd                 >= 0
     Build-depends:  filepath             >= 0
     Build-depends:  friendly-time        >= 0
     Build-depends:  hashable             >= 0
     Build-depends:  http-conduit         >= 0
-    Build-depends:  http-types           >= 0
+    Build-depends:  http-types           >= 0.8.3
     Build-depends:  mtl                  >= 0
     Build-depends:  network              >= 0
     Build-depends:  old-locale           >= 0

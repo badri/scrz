@@ -6,47 +6,18 @@ import qualified Data.Map as M
 import qualified Data.ByteString.Lazy as LB
 import qualified Data.ByteString.Lazy.Char8 as LC8
 import Control.Applicative
-import Control.Exception
 import Control.Concurrent.STM
-import Scrz.Http
+import Control.Monad
+import Network.Etcd
 import Scrz.Utils
 import Scrz.Types
 import Scrz.Protocol ()
 
-baseUrl :: String
-baseUrl = "http://localhost:4001/v1"
+localEtcdServer :: [String]
+localEtcdServer = ["http://localhost:4001"]
 
--- | The response that etcd can return to clients. Inside the etcd sources,
--- the response is represented with a single type (store/store.go).
-data Response = Response
-  { rKey       :: String
-  , rValue     :: Maybe String
-  } deriving (Show)
-
-instance FromJSON Response where
-    parseJSON (Object o) = Response
-        <$> o .:  "key"
-        <*> o .:? "value"
-
-    parseJSON _ = fail "Etcd/Response"
-
-rValueLB :: Response -> LB.ByteString
-rValueLB response = LC8.pack $ fromJust $ rValue response
-
-listKeys :: String -> IO [String]
-listKeys path = (flip catch) (\(_ :: SomeException) -> return []) $ do
-    reply' <- getJSON $ baseUrl ++ "/keys" ++ path
-    case reply' :: Maybe [Response] of
-        Nothing -> return []
-        Just reply -> return $ map rKey reply
-
-getKey :: String -> IO (Maybe Response)
-getKey path = (flip catch) (\(_ :: SomeException) -> return Nothing) $ do
-    getJSON $ baseUrl ++ "/keys" ++ path
-
-putKey :: String -> String -> IO ()
-putKey path value = do
-    postUrlEncoded (baseUrl ++ "/keys" ++ path) [("value", value)]
+rValueLB :: Node -> LB.ByteString
+rValueLB response = LC8.pack $ fromJust $ _nodeValue response
 
 listServices :: IO [Service]
 listServices = do
@@ -55,8 +26,9 @@ listServices = do
 
   where
     parseServices fqdn = do
-        keys <- listKeys $ "/hosts/" ++ fqdn ++ "/services"
-        services <- catMaybes <$> mapM getKey keys
+        client <- createClient localEtcdServer
+        keys <- listDirectoryContents client $ "/hosts/" ++ fqdn ++ "/services"
+        services <- catMaybes <$> mapM (get client . _nodeKey) keys
 
         return $ map (fromJust . decode . rValueLB) services
 
@@ -71,13 +43,14 @@ updateRuntime runtime = do
         let path  = "/hosts/" ++ fqdn ++ "/runtime"
         let value = LC8.unpack $ encode conts
 
-        res <- getKey path
+        client <- createClient localEtcdServer
+        res <- get client path
         case res of
-            Nothing -> putKey path value
+            Nothing -> void $ set client path value Nothing
             Just x -> do
-                if rValue x == Just value
+                if _nodeValue x == Just value
                     then return ()
-                    else putKey path value
+                    else void $ set client path value Nothing
 
 
 -- /v1/keys/hosts/azeroth.caurea.org/services/rstgj5432fstd
