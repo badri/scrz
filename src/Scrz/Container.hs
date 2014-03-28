@@ -97,23 +97,27 @@ generateInitFile Service{..} = "#!/bin/sh\n" ++ body
     exe  = head serviceCommand
     args = intercalate " " $ tail serviceCommand
 
+
 startContainer :: TVar Container -> Maybe Handle -> IO ()
 startContainer container mbHandle = do
     Container{..} <- atomically $ readTVar container
     let Service{..} = containerService
 
     let containerPath = "/srv/scrz/containers/" ++ containerId
-    let lxcConfigPath = containerPath ++ "/config"
+    let rootfsPath    = containerPath ++ "/rootfs"
+    let volumes       = zip containerVolumes serviceVolumes
 
     unless (isJust containerProcess) $ do
-        let args = [ "-n", containerId
-                   , "-f", lxcConfigPath
-                   , "-c", "/dev/null"
-                   , "--"
+        let mounts = map (\(b,v) -> "--bind=" ++ backingVolumePath b ++ ":" ++ volumePath v) volumes
+        let args = [ "-M", containerId
+                   , "-D", containerPath ++ "/rootfs"
+                   ]
+                   ++ mounts ++
+                   [ "--"
                    , "/.init"
                    ]
 
-        p <- execEnv "lxc-start" args [] mbHandle
+        p <- execEnv "systemd-nspawn" args [] mbHandle
         void $ forkFinally (waitE p) clearContainerProcess
 
         atomically $ modifyTVar container $ \x ->
