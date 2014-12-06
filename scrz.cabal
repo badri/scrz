@@ -40,6 +40,7 @@ Executable scrz
     Build-depends:  base16-bytestring    >= 0
     Build-depends:  bytestring           >= 0
     Build-depends:  conduit              >= 0
+    Build-depends:  conduit-extra        >= 0
     Build-depends:  containers           >= 0
     Build-depends:  cryptohash           >= 0
     Build-depends:  directory            >= 0
