@@ -19,6 +19,7 @@ import Scrz.Socket
 import Scrz.Terminal
 import Scrz.Types
 import Scrz.Utils
+import Scrz.Etcd
 import Scrz.Supervisor
 
 
@@ -44,6 +45,7 @@ run [ "pack-image", id' ]            = packImage id'
 run [ "list-images" ]                = listImages
 run [ "destroy-image", id' ]         = destroyImage id'
 run [ "download-image", url, checksum, size ] = downloadImage url checksum (read size)
+run [ "update-service-image", etcdHost, host, service, image, url] = updateServiceImage etcdHost host service image url
 
 
 run [ "console", id' ] = do

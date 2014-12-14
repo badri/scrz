@@ -8,6 +8,7 @@ module Scrz.Image
 
     -- * Misc stuff
   , loadImages
+  , loadImageMeta
   , cloneImage
   , deleteImageClone
   , verifyContent
@@ -83,12 +84,10 @@ loadImages = do
     images <- mapM loadImageMeta ids
     return $ M.fromList $ zip ids images
 
-  where
-
-    loadImageMeta :: String -> IO Image
-    loadImageMeta imgId = do
-        meta <- readMetaFile imgId
-        return $ maybe (Image imgId Nothing) (Image imgId . Just) meta
+loadImageMeta :: String -> IO Image
+loadImageMeta imgId = do
+    meta <- readMetaFile imgId
+    return $ maybe (Image imgId Nothing) (Image imgId . Just) meta
 
 
 cloneImage :: Image -> String -> IO ()

@@ -1,4 +1,8 @@
-module Scrz.Etcd (listServices, updateRuntime) where
+module Scrz.Etcd
+    ( listServices
+    , updateRuntime
+    , updateServiceImage
+    ) where
 
 import Data.Maybe
 import Data.Aeson
@@ -10,6 +14,7 @@ import Control.Concurrent.STM
 import Control.Monad
 import Network.Etcd
 import Scrz.Utils
+import Scrz.Image
 import Scrz.Types
 import Scrz.Protocol ()
 
@@ -53,5 +58,33 @@ updateRuntime runtime = do
                     else void $ set client path value Nothing
 
 
--- /v1/keys/hosts/azeroth.caurea.org/services/rstgj5432fstd
--- /v1/keys/hosts/azeroth.caurea.org/runtime
+updateServiceImage :: String -> String -> String -> String -> String -> IO ()
+updateServiceImage etcdHost host service imgId url = do
+    client <- createClient [etcdHost]
+
+    let key = "/hosts/" ++ host ++ "/services/" ++ service
+    putStrLn $ "Service key: " ++ key
+
+    res <- get client key
+    case res of
+        Nothing -> do
+            putStrLn "Service not found"
+        Just node -> do
+            print node
+            case decode $ rValueLB node of
+                Nothing -> do
+                    putStrLn "Could not decode node value"
+                Just svc -> do
+                    img <- loadImageMeta imgId
+                    case imageMeta img of
+                        Nothing -> do
+                            putStrLn "Image meta is not available"
+                        Just meta -> do
+                            let meta' = meta { imageUrl = url }
+                            let svc' = svc { serviceImage = meta' }
+                            print svc'
+                            void $ set client key (LC8.unpack $ encode svc') Nothing
+
+
+-- /v1/keys/hosts/host/services/rstgj5432fstd
+-- /v1/keys/hosts/host/runtime
