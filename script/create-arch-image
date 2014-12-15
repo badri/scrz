@@ -1,0 +1,24 @@
+#!/bin/sh
+set -e
+
+VOLUME="/srv/scrz/images/arch/volume"
+
+if test -d "$VOLUME"; then
+  echo "Image already exists. If you want to delete the image, use this command:"
+  echo
+  echo "  btrfs subvolume delete $VOLUME"
+  echo
+
+  exit
+fi
+
+
+test -d "$(dirname "$VOLUME")" || mkdir -p "$(dirname "$VOLUME")"
+btrfs subvol create "$VOLUME"
+pacstrap -i -c -d "$VOLUME" base
+
+
+chroot "$VOLUME" pacman-key --init
+
+
+echo "root:root" | chroot "$VOLUME" chpasswd
