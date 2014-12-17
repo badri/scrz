@@ -63,7 +63,7 @@ imageContentPath :: Image -> String
 imageContentPath = imageContentPathS . imageId
 
 imageVolumePathS :: String -> String
-imageVolumePathS image = imageBasePathS image </> "volume"
+imageVolumePathS image = imageBasePathS image </> "rootfs"
 
 imageVolumePath :: Image -> String
 imageVolumePath = imageVolumePathS . imageId
