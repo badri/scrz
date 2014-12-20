@@ -1,0 +1,18 @@
+#!/bin/sh
+
+set -e
+
+cabal configure --prefix=/opt/scrz
+cabal build
+
+rm -rf img
+mkdir -p img img/opt/scrz/lib img/etc/systemd/system
+
+cabal copy --destdir=img
+
+cp /usr/lib/libgmp.so.10 img/opt/scrz/lib/
+
+cp systemd/* img/etc/systemd/system/
+
+tar czf scrz.tar.gz -C img .
+rm -rf img

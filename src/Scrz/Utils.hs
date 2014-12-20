@@ -1,3 +1,5 @@
+{-# LANGUAGE ForeignFunctionInterface #-}
+
 module Scrz.Utils where
 
 import Control.Monad.Random

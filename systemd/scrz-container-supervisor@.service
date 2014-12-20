@@ -1,0 +1,8 @@
+[Unit]
+Description=scrz container supervisor %I
+
+[Service]
+Environment=LD_LIBRARY_PATH=/opt/scrz/lib
+ExecStart=/opt/scrz/bin/scrz-container-supervisor %I
+KillMode=process
+PrivateTmp=true

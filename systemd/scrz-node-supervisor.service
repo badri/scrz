@@ -1,0 +1,6 @@
+[Unit]
+Description=scrz node supervisor
+
+[Service]
+Environment=LD_LIBRARY_PATH=/opt/scrz/lib
+ExecStart=/opt/scrz/bin/scrz-node-supervisor

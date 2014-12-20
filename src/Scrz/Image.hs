@@ -1,29 +1,27 @@
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards #-}
 
 -- | Functions related to handling images.
 
 module Scrz.Image
   (
-    -- * Creating images
-    imageFromMeta
-
     -- * Misc stuff
-  , loadImages
-  , loadImageMeta
-  , cloneImage
+    loadImages
+  , loadImageManifest
   , deleteImageClone
-  , verifyContent
-  , packImage
-  , ensureImage
-  , snapshotContainerImage
   , destroyImage
 
-    -- * Interenal functions, should not be exported
-  , imageBasePath
-  , imageVolumePath
+  , loadImageFuzzy
+  , hashFileSHA512
+  , createTarball
+
+  , fetchImage
 
   ) where
 
 import           Data.Aeson
+import           Data.Monoid
+import           Data.Maybe
 
 import           Data.Map (Map)
 import qualified Data.Map as M
@@ -31,12 +29,19 @@ import qualified Data.ByteString.Char8 as BS8
 import qualified Data.ByteString.Base16 as BS16
 import qualified Data.ByteString.Lazy as LB
 
-import qualified Crypto.Hash.SHA3 as SHA3
+import           Data.Text (Text)
+import qualified Data.Text as T
+
+import qualified Crypto.Hash.SHA512 as SHA512
+import qualified Crypto.Hash.SHA3   as SHA3
+
+import Data.AppContainer.Types (ImageManifest(..))
 
 import System.Directory
 import System.FilePath
 
 import Control.Monad
+import Control.Monad.Except
 import Control.Applicative
 import Control.Concurrent.STM
 
@@ -48,51 +53,47 @@ import Scrz.Btrfs
 
 
 baseImageDirectory :: String
-baseImageDirectory = "/srv/scrz/images"
+baseImageDirectory = "/var/lib/scrz/images"
 
 imageBasePathS :: String -> String
 imageBasePathS = (</>) baseImageDirectory
 
-imageBasePath :: Image -> String
-imageBasePath = imageBasePathS . imageId
-
 imageContentPathS :: String -> String
 imageContentPathS image = imageBasePathS image </> "content"
 
-imageContentPath :: Image -> String
-imageContentPath = imageContentPathS . imageId
-
 imageVolumePathS :: String -> String
 imageVolumePathS image = imageBasePathS image </> "rootfs"
-
-imageVolumePath :: Image -> String
-imageVolumePath = imageVolumePathS . imageId
 
 imageMetaPathS :: String -> String
 imageMetaPathS image = imageBasePathS image </> "meta"
 
 
--- | Create a new image given the meta description of it. The image id is
--- automatically created by hashing the meta record.
-imageFromMeta :: ImageMeta -> Image
-imageFromMeta meta = Image (mkImageId meta) (Just meta)
+listImageIds :: Scrz [Text]
+listImageIds = do
+    entries <- scrzIO $ getDirectoryContents baseImageDirectory
+    return $ map T.pack $ filter (\x -> '.' /= head x) entries
 
-
-loadImages :: IO (Map String Image)
+loadImages :: Scrz [(Text, ImageManifest)]
 loadImages = do
-    ids <- filter (\x -> '.' /= head x) <$> getDirectoryContents baseImageDirectory
-    images <- mapM loadImageMeta ids
-    return $ M.fromList $ zip ids images
+    ids <- listImageIds
+    images <- mapM (\iId -> loadImageManifest ("/var/lib/scrz/images/" <> iId <> "/manifest")) ids
+    return $ zip ids images
 
-loadImageMeta :: String -> IO Image
-loadImageMeta imgId = do
-    meta <- readMetaFile imgId
-    return $ maybe (Image imgId Nothing) (Image imgId . Just) meta
+loadImageManifest :: Text -> Scrz ImageManifest
+loadImageManifest path = do
+    bs <- scrzIO $ LB.readFile $ T.unpack path
+    case eitherDecode bs of
+        Left e -> throwError $ InternalError (T.pack e)
+        Right im -> return im
 
 
-cloneImage :: Image -> String -> IO ()
-cloneImage image path = do
-    btrfsSubvolSnapshot (imageVolumePath image) path
+loadImageFuzzy :: Text -> Scrz (Text, ImageManifest)
+loadImageFuzzy prefix = do
+    ids <- listImageIds
+
+    case filter (\x -> T.isPrefixOf prefix x) ids of
+        [iId] -> (,) <$> pure iId <*> loadImageManifest ("/var/lib/scrz/images/" <> iId <> "/manifest")
+        _     -> throwError $ InternalError $ "Not a unique image id: " <> prefix
 
 
 deleteImageClone :: String -> IO ()
@@ -100,88 +101,117 @@ deleteImageClone path = do
     btrfsSubvolDelete path
 
 
-snapshotContainerImage :: TVar Container -> String -> IO ()
-snapshotContainerImage container image = do
-    id' <- atomically $ containerId <$> readTVar container
-    let rootfsPath = "/srv/scrz/containers/" ++ id' ++ "/rootfs"
-
-    btrfsSubvolSnapshot rootfsPath volumePath'
-
-  where
-
-    imagePath   = "/srv/scrz/images/" ++ image
-    volumePath' = imagePath ++ "/volume"
-
-
-verifyContent :: Image -> a -> (String -> Int -> IO a) -> IO a
-verifyContent image def action = maybe (return def) doVerifyContent (imageMeta image)
-  where
-    doVerifyContent meta = do
-        (checksum, size) <- hashFile (imageContentPathS $ imageId image)
-
-        let checksumOk = isCorrectChecksum checksum meta
-        let sizeOk     = isCorrectSize size meta
-
-        if checksumOk && sizeOk
-            then return def
-            else action checksum size
-
 unlessIO :: IO Bool -> IO () -> IO ()
 unlessIO conditionAction thenAction = do
     condition <- conditionAction
     unless condition thenAction
 
 
-ensureImage :: Image -> IO ()
-ensureImage image = do
-    unlessIO (doesFileExist $ imageContentPath image) $ do
-        downloadImage image
 
-        -- FIXME: Only verify if we've just downloaded the file.
-        verifyContent image () $ \_ _ -> do
-            logger $ "Downloaded image has invalid checksum"
-            removeFile (imageContentPath image)
-            error "Image checksum mismatch"
+data UIMEntry = UIMEntry
+    { rURL :: !Text
+    , rObjectId :: !Text
+    } deriving (Show)
+
+instance ToJSON UIMEntry where
+    toJSON UIMEntry{..} = object [ "url" .= rURL, "objectId" .= rObjectId ]
+
+instance FromJSON UIMEntry where
+    parseJSON (Object o) = UIMEntry
+        <$> o .: "url"
+        <*> o .: "objectId"
+    parseJSON _ = fail "UIMEntry"
 
 
-    -- Download and unpack the content file if it doesn't exist.
-    unlessIO (doesDirectoryExist $ imageVolumePath image) $ do
-        unpackImage image
+fetchImage :: Text -> Scrz (Text, ImageManifest)
+fetchImage name = do
+    -- TODO: App Container Image Discovery
+    url <- return $ "https://" <> name <> ".aci"
+    -- throwError $ UInternalError ""
 
+    let tmp = "/var/lib/scrz/tmp"
+    liftIO $ do
+        createDirectoryIfMissing True tmp
+        createDirectoryIfMissing True $ "/var/lib/scrz/uim"
+        createDirectoryIfMissing True $ "/var/lib/scrz/objects"
+        createDirectoryIfMissing True $ "/var/lib/scrz/images"
 
-downloadImage :: Image -> IO ()
-downloadImage image = maybe (return ()) doDownloadImage (imageMeta image)
-  where
-    doDownloadImage :: ImageMeta -> IO ()
-    doDownloadImage meta = do
-        logger $ "Downloading image " ++ imageId image ++ " from " ++ imageUrl meta
-        createDirectoryIfMissing True $ imageBasePath image
-        downloadBinary (imageUrl meta) $ imageContentPath image
-        writeMetaFile (imageId image) meta
+    -- Map the URL to the ObjectId of the Image.
+    uime@UIMEntry{..} <- liftIO $ do
+        let oh = hashSHA512 $ encode url
+        exists <- doesFileExist $ "/var/lib/scrz/uim/sha512-" <> oh
+        if exists
+            then do
+                (fromJust . decode) <$> LB.readFile ("/var/lib/scrz/uim/sha512-" <> oh)
+
+            else do
+                -- Download the image into a temporary file.
+                tmpId <- newId
+                putStrLn $ "Using temporary file " ++ tmpId
+                downloadBinary
+                    (T.unpack url)
+                    (tmp ++ "/" ++ tmpId ++ ".gz")
+
+                -- Unzip the file
+                fatal =<< exec "gunzip" [ (tmp ++ "/" ++ tmpId ++ ".gz") ]
+
+                -- Determine the image ID.
+                iId <- imageIdFromFile (tmp ++ "/" ++ tmpId)
+                print $ "ImageId: " <> iId
+
+                -- Move the file into the object store.
+                renameFile (tmp ++ "/" ++ tmpId) ("/var/lib/scrz/objects/" <> T.unpack iId)
+                let ir  = UIMEntry url iId
+                    irb = encode ir
+
+                -- Write out the UIM entry.
+                LB.writeFile ("/var/lib/scrz/uim/sha512-" <> oh) irb
+
+                return ir
+
+    liftIO $ print uime
+
+    -- Unpack the image into a btrfs volume.
+    res <- liftIO $ do
+        de <- doesDirectoryExist $ "/var/lib/scrz/images/" <> T.unpack rObjectId
+        unless de $ do
+            createDirectoryIfMissing True $ "/var/lib/scrz/images/" <> T.unpack rObjectId
+            btrfsSubvolCreate $ "/var/lib/scrz/images/" <> T.unpack rObjectId <> "/rootfs"
+            unpackTarball
+                ("/var/lib/scrz/objects/" <> T.unpack rObjectId)
+                ("/var/lib/scrz/images/" <> T.unpack rObjectId)
+
+        mf <- LB.readFile $ "/var/lib/scrz/images/" <> T.unpack rObjectId <> "/manifest"
+        return $ eitherDecode mf
+
+    case res of
+        Left e -> throwError $ InternalError $ T.pack $ show e
+        Right im -> return (rObjectId, im)
+
+-- | Given a path to a (possible compressed) image file, return the image ID.
+imageIdFromFile :: String -> IO Text
+imageIdFromFile path = do
+    (hash, _) <- hashFileSHA512 path
+    return $ "sha512-" <> T.pack hash
+
 
 
 destroyImage :: String -> IO ()
 destroyImage localImageId = do
-    volumeExists <- doesDirectoryExist volumePath
+    volumeExists <- doesDirectoryExist vp
     when volumeExists $ do
-        btrfsSubvolDelete volumePath
+        btrfsSubvolDelete vp
 
     removeDirectoryRecursive $ imageBasePathS localImageId
 
   where
 
-    volumePath = imageVolumePathS localImageId
-
-
-unpackImage :: Image -> IO ()
-unpackImage image = do
-    btrfsSubvolCreate (imageVolumePath image)
-    unpackTarball (imageContentPath image) (imageVolumePath image)
+    vp = imageVolumePathS localImageId
 
 
 createTarball :: String -> String -> IO ()
 createTarball tgz path = do
-    fatal =<< exec "tar" [ "-czf", tgz, "-C", path, "." ]
+    fatal =<< exec "tar" [ "-cf", tgz, "-C", path, "." ]
 
 
 unpackTarball :: String -> String -> IO ()
@@ -189,32 +219,11 @@ unpackTarball tgz path = do
     fatal =<< exec "tar" [ "-xf", tgz, "-C", path ]
 
 
-writeMetaFile :: String -> ImageMeta -> IO ()
-writeMetaFile localImageId image = do
-    LB.writeFile (imageMetaPathS localImageId) $ encode image
+hashSHA512 :: LB.ByteString -> String
+hashSHA512 = BS8.unpack . BS16.encode . SHA512.hashlazy
 
-
-readMetaFile :: String -> IO (Maybe ImageMeta)
-readMetaFile localImageId = do
-    metaFileExists <- doesFileExist $ imageMetaPathS localImageId
-    if not metaFileExists
-        then return Nothing
-        else decode <$> LB.readFile (imageMetaPathS localImageId)
-
-
-hashFile :: String -> IO (String, Int)
-hashFile path = do
+hashFileSHA512 :: String -> IO (String, Int)
+hashFileSHA512 path = do
     contents <- LB.readFile path
     let size = fromIntegral $ LB.length contents
-    return $ (BS8.unpack $ BS16.encode $ SHA3.hashlazy 512 contents, size)
-
-
-packImage :: String -> IO ()
-packImage localImageId = do
-    createTarball contentPath (imageVolumePathS localImageId)
-    (hash, size) <- hashFile contentPath
-    writeMetaFile localImageId $ ImageMeta localImageId hash size
-
-  where
-
-    contentPath = imageContentPathS localImageId
+    return $ (hashSHA512 contents, size)

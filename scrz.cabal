@@ -1,5 +1,5 @@
 Name:           scrz
-Version:        0.0.0.1
+Version:        0.0.0
 
 License:        OtherLicense
 License-file:   UNLICENSE
@@ -44,7 +44,7 @@ Executable scrz
     Build-depends:  containers           >= 0
     Build-depends:  cryptohash           >= 0
     Build-depends:  directory            >= 0
-    Build-depends:  etcd                 >= 0
+    Build-depends:  etcd                 >= 1.0.3
     Build-depends:  filepath             >= 0
     Build-depends:  friendly-time        >= 0
     Build-depends:  hashable             >= 0
@@ -65,14 +65,81 @@ Executable scrz
 
     Main-is:        Scrz/Main.hs
 
-    Extensions:     BangPatterns
-    Extensions:     DeriveGeneric
-    Extensions:     DoAndIfThenElse
-    Extensions:     ForeignFunctionInterface
-    Extensions:     OverloadedStrings
-    Extensions:     RecordWildCards
-    Extensions:     RecursiveDo
-    Extensions:     ScopedTypeVariables
-    Extensions:     ViewPatterns
+    Ghc-Options:    -threaded -Wall
+
+
+Executable scrz-node-supervisor
+
+    Build-depends:  MonadRandom          >= 0
+    Build-depends:  aeson                >= 0
+    Build-depends:  base                 >= 4 && < 5
+    Build-depends:  base16-bytestring    >= 0
+    Build-depends:  bytestring           >= 0
+    Build-depends:  conduit              >= 0
+    Build-depends:  conduit-extra        >= 0
+    Build-depends:  containers           >= 0
+    Build-depends:  cryptohash           >= 0
+    Build-depends:  directory            >= 0
+    Build-depends:  etcd                 >= 1.0.3
+    Build-depends:  filepath             >= 0
+    Build-depends:  friendly-time        >= 0
+    Build-depends:  hashable             >= 0
+    Build-depends:  http-conduit         >= 0
+    Build-depends:  http-types           >= 0.8.3
+    Build-depends:  mtl                  >= 0
+    Build-depends:  network              >= 0
+    Build-depends:  old-locale           >= 0
+    Build-depends:  process              >= 0
+    Build-depends:  random               >= 0
+    Build-depends:  stm                  >= 0
+    Build-depends:  template-haskell     >= 0
+    Build-depends:  text                 >= 0
+    Build-depends:  time                 >= 0
+    Build-depends:  unix                 >= 0
+    Build-depends:  optparse-applicative
+
+    Hs-Source-Dirs: src
+
+    Main-is:        Main/ScrzNodeSupervisor.hs
+
+    Ghc-Options:    -threaded -Wall
+
+
+
+Executable scrz-container-supervisor
+
+    Build-depends:  MonadRandom          >= 0
+    Build-depends:  aeson                >= 0
+    Build-depends:  base                 >= 4 && < 5
+    Build-depends:  base16-bytestring    >= 0
+    Build-depends:  bytestring           >= 0
+    Build-depends:  conduit              >= 0
+    Build-depends:  conduit-extra        >= 0
+    Build-depends:  containers           >= 0
+    Build-depends:  cryptohash           >= 0
+    Build-depends:  directory            >= 0
+    Build-depends:  etcd                 >= 1.0.3
+    Build-depends:  filepath             >= 0
+    Build-depends:  friendly-time        >= 0
+    Build-depends:  hashable             >= 0
+    Build-depends:  http-conduit         >= 0
+    Build-depends:  http-types           >= 0.8.3
+    Build-depends:  mtl                  >= 0
+    Build-depends:  network              >= 0
+    Build-depends:  old-locale           >= 0
+    Build-depends:  process              >= 0
+    Build-depends:  random               >= 0
+    Build-depends:  stm                  >= 0
+    Build-depends:  template-haskell     >= 0
+    Build-depends:  text                 >= 0
+    Build-depends:  time                 >= 0
+    Build-depends:  unix                 >= 0
+    Build-depends:  optparse-applicative
+    Build-depends:  appc
+    Build-depends:  uuid
+
+    Hs-Source-Dirs: src
+
+    Main-is:        Main/ScrzContainerSupervisor.hs
 
     Ghc-Options:    -threaded -Wall

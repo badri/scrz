@@ -1,134 +1,235 @@
+{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE RecordWildCards     #-}
+
 module Main where
 
-import Control.Monad
-import System.Environment
+
+import Control.Monad.Except
+import Control.Monad.Reader
+
+import Options.Applicative
+import Options.Applicative.Types
+
 import System.Directory
-import System.Posix.Process
-import System.Posix.IO
-import System.Posix.Terminal (openPseudoTerminal, getSlaveTerminalName)
+import System.Posix.Files
 
-import Control.Exception
-import Control.Concurrent
+import           Data.Time.Format.Human
 
-import Scrz.Protocol
-import Scrz.Commands
+
+import           Data.Monoid
+import           Data.Time.Clock.POSIX
+
+import           Data.Text (Text)
+import qualified Data.Text as T
+
+import           Data.AppContainer.Types
+
 import Scrz.Image
-import Scrz.Log
-import Scrz.Proxy
-import Scrz.Socket
-import Scrz.Terminal
 import Scrz.Types
+import Scrz.Log
+import Scrz.Host
+import Scrz.Btrfs
 import Scrz.Utils
-import Scrz.Etcd
-import Scrz.Supervisor
 
 
 
-run :: [ String ] -> IO ()
+data Options = Options !Command
 
-run [ "supervisor" ]                 = startSupervisor Nothing
-run [ "supervisor", url ]            = startSupervisor (Just url)
-
-run [ "ipvs", addr, url ]            = ipvsProxy addr url
-
-run [ "inspect", id' ]               = inspectContainer id'
-run [ "ps" ]                         = listContainers
-run [ "list-containers" ]            = listContainers
-run [ "stop-container", id' ]        = stopContainer id'
-run [ "destroy-container", id' ]     = destroyContainer id'
-run [ "start", id' ]                 = startContainer id'
-run [ "stop", id' ]                  = stopContainer id'
-run [ "restart", id' ]               = stopContainer id' >> startContainer id'
-run [ "quit" ]                       = quitSupervisor
-run [ "snapshot", container, image ] = snapshotContainer container image
-run [ "pack-image", id' ]            = packImage id'
-run [ "list-images" ]                = listImages
-run [ "destroy-image", id' ]         = destroyImage id'
-run [ "download-image", url, checksum, size ] = downloadImage url checksum (read size)
-run [ "update-service-image", etcdHost, host, service, image, url] = updateServiceImage etcdHost host service image url
+data Command
+    = Version
+    | Fetch !Text
+    | Clone !Text !Text
+    | ListImages
+    | ShowWorkspace
+    | RemoveWorkspaceImage !Text
+    | PackImage !Text !Text
 
 
-run [ "console", id' ] = do
-    executeFile "lxc-console" True [ "-n", id' ] Nothing
+workspacePath :: Text
+workspacePath = "/var/lib/scrz/workspace/"
 
-
-run [ "clone-image", localImageId, newImageId ] = do
-    let srcImage = Image localImageId Nothing
-    let dstImage = Image newImageId Nothing
-
-    createDirectoryIfMissing True (imageBasePath dstImage)
-    cloneImage srcImage (imageVolumePath dstImage)
-
-
-run ("run":args) = do
-    (ptm, pts) <- openPseudoTerminal
-    attrs      <- setRawModeFd stdInput
-
-    response <- finally (sendRunCommand ptm) (freeResources ptm pts attrs) `catch` \(_ :: SomeException) -> return ErrorResponse
-
-    logger $ show response
-    handleResponse response `onException` do
-        logger $ "Got exception"
-
-
-  where
-    ra = parseRunArguments (RunArgs "" [] [] Nothing) args
-    pump src dst = fdRead src 999 >>= \(x, _) -> fdWrite dst x
-
-    freeResources ptm pts attrs = do
-        resetModeFd stdInput attrs
-        closeFd ptm
-        closeFd pts
-
-    sendRunCommand ptm = do
-        void $ forkFinally (forever $ pump ptm stdOutput) (const $ return ())
-        void $ forkFinally (forever $ pump stdInput ptm)  (const $ return ())
-
-        slaveName <- getSlaveTerminalName ptm
-        response  <- sendCommand $ Run (runArgsImage ra) (runArgsCommand ra) slaveName (runArgsMounts ra)
-
-        case response of
-            CreateContainerResponse id' -> void $ sendCommand $ Wait id'
-            _ -> return ()
-
-        return response
-
-    handleResponse response = do
-        case response of
-            CreateContainerResponse id' -> do
-                imageId' <- maybe newId return (runArgsSaveAs ra)
-                logger $ "Saving image under id " ++ imageId'
-                void $ sendCommand $ Snapshot id' imageId'
-                void $ sendCommand $ DestroyContainer id'
-
-            _ -> do
-                logger $ "Received unexpected response: " ++ show response
-
-
-run args = do
-    logger $ "Unknown arguments: " ++ (show args)
-
-
-data RunArgs = RunArgs
-  { runArgsImage :: String
-  , runArgsCommand :: [String]
-  , runArgsMounts :: [(String,String)]
-  , runArgsSaveAs :: Maybe String
-  } deriving (Show)
-
-parseRunArguments :: RunArgs -> [String] -> RunArgs
-parseRunArguments ra ("--save-as" : id' : args) =
-    let pra = ra { runArgsSaveAs = Just id' }
-    in parseRunArguments pra args
-
-parseRunArguments ra ("--mount" : bv : mp : args) =
-    let pra = ra { runArgsMounts = (bv,mp) : runArgsMounts ra }
-    in parseRunArguments pra args
-
-parseRunArguments ra (image : command) =
-    ra { runArgsImage = image, runArgsCommand = command }
-
-parseRunArguments ra [] = ra
 
 main :: IO ()
-main = getArgs >>= run
+main = run =<< execParser
+    (parseOptions `withInfo` "scrz")
+
+run :: Options -> IO ()
+run (Options Version) = do
+    putStrLn "v0.0.1"
+
+run (Options (Fetch name)) = do
+    _ <- runExceptT $ fetchImage name
+    return ()
+
+run (Options (Clone dst src)) = do
+    ret <- runExceptT $ do
+        (iId, im) <- loadImageFuzzy src
+        mkdir workspacePath
+        createVolumeSnapshot
+            (workspacePath <> dst <> "/rootfs")
+            ("/var/lib/scrz/images/" <> iId <> "/rootfs")
+
+    case ret of
+        Left e -> error $ show e
+        Right _ -> return ()
+
+run (Options ListImages) = do
+    ires <- runExceptT loadImages
+    let images = case ires of
+            Left e -> error (show e)
+            Right x -> x
+
+
+    let headers = [ "NAME", "ID" ]
+    rows <- mapM toRow $ images
+    tabWriter $ headers : rows
+
+  where
+
+    toRow :: (Text, ImageManifest) -> IO [String]
+    toRow (localImageId, ImageManifest{..}) = do
+        return
+            [ T.unpack imName
+            , T.unpack $ T.take 27 localImageId
+            ]
+
+run (Options ShowWorkspace) = do
+    ires <- runExceptT $ do
+        entries <- scrzIO $ getDirectoryContents "/var/lib/scrz/workspace"
+        return $ map T.pack $ filter (\x -> '.' /= head x) entries
+
+    let volumes = case ires of
+            Left e -> error (show e)
+            Right x -> x
+
+
+    let headers = [ "NAME", "CREATED AT" ]
+    rows <- mapM toRow $ volumes
+    tabWriter $ headers : rows
+
+  where
+
+    toRow :: Text -> IO [String]
+    toRow volumeName = do
+        fs <- getFileStatus $ "/var/lib/scrz/workspace/" <> T.unpack volumeName
+        let mtime = statusChangeTime fs
+        timeDiff <- humanReadableTime $ posixSecondsToUTCTime $ realToFrac mtime
+        return
+            [ T.unpack volumeName
+            , timeDiff
+            ]
+
+run (Options (RemoveWorkspaceImage name)) = do
+    ires <- runExceptT $ do
+        scrzIO $ btrfsSubvolDelete $ "/var/lib/scrz/workspace/" <> T.unpack name
+
+    case ires of
+        Left e -> error (show e)
+        Right x -> return x
+
+run (Options (PackImage manifest name)) = do
+    ires <- runExceptT $ do
+        void $ loadImageManifest manifest
+        scrzIO $ copyFile (T.unpack manifest) (T.unpack $ workspacePath <> name <> "/manifest")
+        tmpId <- scrzIO $ newId
+        scrzIO $ createTarball
+            ("/var/lib/scrz/tmp/" <> tmpId)
+            (T.unpack $ workspacePath <> name)
+
+        (hash, len) <- scrzIO $ hashFileSHA512 $ ("/var/lib/scrz/tmp/" <> tmpId)
+
+        scrzIO $ renameFile
+            ("/var/lib/scrz/tmp/" <> tmpId)
+            ("/var/lib/scrz/objects/sha512-" <> hash)
+
+        scrzIO $ putStrLn $ "sha512-" <> hash
+        return ()
+
+    case ires of
+        Left e -> error (show e)
+        Right _ -> return ()
+
+
+
+parseOptions :: Parser Options
+parseOptions = Options <$> parseCommand
+
+parseCommand :: Parser Command
+parseCommand = subparser $ mconcat
+    [ command "version"
+        (parseVersion `withInfo` "Print the version and exit")
+
+    , command "fetch"
+        (parseFetch `withInfo` "Fetch an image")
+
+    , command "clone"
+        (parseClone `withInfo` "Clone an image to a temporary directory")
+
+    , command "list-images"
+        (parseListImages `withInfo` "List all images on the host")
+
+    , command "show-workspace"
+        (parseShowWorkspace `withInfo` "Show volumes in the workspace")
+
+    , command "remove-workspace-image"
+        (parseRemoveWorkspaceImage `withInfo` "Remove an image from the workspace")
+
+    , command "pack-image"
+        (parsePackImage `withInfo` "Pack a workspace image into an ACI archive")
+
+    ]
+
+
+parseVersion :: Parser Command
+parseVersion = pure Version
+
+parseFetch :: Parser Command
+parseFetch = Fetch
+    <$> argument text (metavar "URL")
+
+parseClone :: Parser Command
+parseClone = Clone
+    <$> argument text (metavar "DST")
+    <*> argument text (metavar "SRC")
+
+parseListImages :: Parser Command
+parseListImages = pure ListImages
+
+parseShowWorkspace :: Parser Command
+parseShowWorkspace = pure ShowWorkspace
+
+parseRemoveWorkspaceImage :: Parser Command
+parseRemoveWorkspaceImage = RemoveWorkspaceImage
+    <$> argument text (metavar "IMAGE-NAME")
+
+parsePackImage :: Parser Command
+parsePackImage = PackImage
+    <$> argument text (metavar "MANIFEST")
+    <*> argument text (metavar "IMAGE-NAME")
+
+withInfo :: Parser a -> String -> ParserInfo a
+withInfo opts desc = info (helper <*> opts) $ progDesc desc
+
+
+text :: ReadM Text
+text = ReadM (asks T.pack)
+
+
+
+-- run :: [ String ] -> IO ()
+--
+-- run [ "pack-image", id' ]            = packImage id'
+-- run [ "list-images" ]                = listImages
+-- run [ "destroy-image", id' ]         = destroyImage id'
+--
+-- run [ "fetch", url, checksum, size ] = downloadImage url checksum (read size)
+-- run [ "update-service-image", etcdHost, host, service, image, url] = updateServiceImage etcdHost host service image url
+--
+--
+-- run [ "clone-image", localImageId, newImageId ] = do
+--     let srcImage = Image localImageId Nothing
+--     let dstImage = Image newImageId Nothing
+--
+--     createDirectoryIfMissing True (imageBasePath dstImage)
+--     cloneImage srcImage (imageVolumePath dstImage)

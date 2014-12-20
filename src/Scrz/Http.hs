@@ -1,3 +1,5 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 module Scrz.Http (getJSON, patchJSON, downloadBinary, postUrlEncoded) where
 
 import           Data.Aeson
