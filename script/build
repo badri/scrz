@@ -14,5 +14,7 @@ cp /usr/lib/libgmp.so.10 img/opt/scrz/lib/
 
 cp systemd/* img/etc/systemd/system/
 
-tar czf scrz.tar.gz -C img .
+OUTPUT=scrz-$(git describe | tr -d v)-coreos.tar.gz
+tar czf $OUTPUT -C img .
+
 rm -rf img
