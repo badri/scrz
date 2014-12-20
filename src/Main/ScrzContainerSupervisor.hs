@@ -38,8 +38,12 @@ data Command
 
 
 main :: IO ()
-main = run =<< execParser
-    (parseOptions `withInfo` "scrz container supervisor")
+main = do
+
+    disableOutputBuffering
+
+    run =<< execParser
+        (parseOptions `withInfo` "scrz container supervisor")
 
 
 run :: Options -> IO ()

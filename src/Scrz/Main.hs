@@ -51,8 +51,12 @@ workspacePath = "/var/lib/scrz/workspace/"
 
 
 main :: IO ()
-main = run =<< execParser
-    (parseOptions `withInfo` "scrz")
+main = do
+
+    disableOutputBuffering
+
+    run =<< execParser
+        (parseOptions `withInfo` "scrz")
 
 run :: Options -> IO ()
 run (Options Version) = do

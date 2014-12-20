@@ -11,6 +11,7 @@ import Control.Concurrent
 import Scrz.Log
 import Scrz.Utils
 import Scrz.Etcd
+import Scrz.Host
 
 import Data.Monoid
 import qualified Data.Text as T
@@ -26,8 +27,12 @@ data Command
 
 
 main :: IO ()
-main = run =<< execParser
-    (parseOptions `withInfo` "scrz node supervisor")
+main = do
+
+    disableOutputBuffering
+
+    run =<< execParser
+        (parseOptions `withInfo` "scrz node supervisor")
 
 
 run :: Options -> IO ()
