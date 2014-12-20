@@ -68,7 +68,10 @@ run (Options (Run cId)) = do
             createDirectoryIfMissing True containerPath
 
             let img = head crmImages
-            Right (iId, ImageManifest{..}) <- runExceptT $ fetchImage (imageApp img)
+            im <- runExceptT $ fetchImage (imageApp img)
+            (iId, ImageManifest{..}) <- case im of
+                Left e -> error $ show e
+                Right x -> return x
 
             btrfsSubvolSnapshot
                 ("/var/lib/scrz/images/" <> T.unpack iId <> "/rootfs")
