@@ -1,0 +1,10 @@
+{
+    "acKind": "ImageManifest",
+    "acVersion": "0.1.1",
+    "name": "images.scrz.io/{{name}}",
+    "app": {
+        "exec": [ "/usr/lib/systemd/systemd" ],
+        "group": "0",
+        "user": "0"
+    }
+}

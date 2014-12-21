@@ -1,7 +1,8 @@
 #!/bin/sh
 set -e
 
-VOLUME="/srv/scrz/images/arch/volume"
+
+VOLUME="/var/lib/scrz/workspace/arch/rootfs"
 
 if test -d "$VOLUME"; then
   echo "Image already exists. If you want to delete the image, use this command:"
@@ -22,3 +23,12 @@ chroot "$VOLUME" pacman-key --init
 
 
 echo "root:root" | chroot "$VOLUME" chpasswd
+
+
+MANIFEST="$(mktemp)"
+chmod 644 $MANIFEST
+cat script/systemd-os-image-manifest-template | \
+    sed -e "s/{{name}}/arch-$(date +%Y.%m.%d)-64bit/" > $MANIFEST
+
+scrz pack-image $MANIFEST arch
+rm $MANIFEST
