@@ -115,7 +115,7 @@ fetchImage name = do
             else do
                 -- Download the image into a temporary file.
                 tmpId <- newId
-                putStrLn $ "Using temporary file " ++ tmpId
+                -- putStrLn $ "Using temporary file " ++ tmpId
                 downloadBinary
                     (T.unpack url)
                     (tmp ++ "/" ++ tmpId ++ ".gz")
