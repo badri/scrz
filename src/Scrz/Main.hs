@@ -63,8 +63,10 @@ run (Options Version) = do
     putStrLn "v0.0.1"
 
 run (Options (Fetch name)) = do
-    _ <- runExceptT $ fetchImage name
-    return ()
+    res <- runExceptT $ fetchImage name
+    case res of
+        Left e -> error $ show e
+        Right (oid, _) -> putStrLn $ T.unpack oid
 
 run (Options (Clone dst src)) = do
     ret <- runExceptT $ do
@@ -126,7 +128,7 @@ run (Options ShowWorkspace) = do
 
 run (Options (RemoveWorkspaceImage name)) = do
     ires <- runExceptT $ do
-        scrzIO $ btrfsSubvolDelete $ "/var/lib/scrz/workspace/" <> T.unpack name
+        scrzIO $ btrfsSubvolDelete $ "/var/lib/scrz/workspace/" <> T.unpack name <> "/rootfs"
 
     case ires of
         Left e -> error (show e)

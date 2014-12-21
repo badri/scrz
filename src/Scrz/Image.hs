@@ -125,7 +125,6 @@ fetchImage name = do
 
                 -- Determine the image ID.
                 iId <- imageIdFromFile (tmp ++ "/" ++ tmpId)
-                print $ "ImageId: " <> iId
 
                 -- Move the file into the object store.
                 renameFile (tmp ++ "/" ++ tmpId) ("/var/lib/scrz/objects/" <> T.unpack iId)
@@ -136,8 +135,6 @@ fetchImage name = do
                 LB.writeFile ("/var/lib/scrz/uim/sha512-" <> oh) irb
 
                 return ir
-
-    liftIO $ print uime
 
     -- Unpack the image into a btrfs volume.
     res <- liftIO $ do
