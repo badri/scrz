@@ -8,8 +8,6 @@ module Scrz.Image
     -- * Misc stuff
     loadImages
   , loadImageManifest
-  , deleteImageClone
-  , destroyImage
 
   , loadImageFuzzy
   , hashFileSHA512
@@ -23,8 +21,6 @@ import           Data.Aeson
 import           Data.Monoid
 import           Data.Maybe
 
-import           Data.Map (Map)
-import qualified Data.Map as M
 import qualified Data.ByteString.Char8 as BS8
 import qualified Data.ByteString.Base16 as BS16
 import qualified Data.ByteString.Lazy as LB
@@ -33,39 +29,23 @@ import           Data.Text (Text)
 import qualified Data.Text as T
 
 import qualified Crypto.Hash.SHA512 as SHA512
-import qualified Crypto.Hash.SHA3   as SHA3
 
 import Data.AppContainer.Types (ImageManifest(..))
 
 import System.Directory
-import System.FilePath
 
 import Control.Monad
 import Control.Monad.Except
 import Control.Applicative
-import Control.Concurrent.STM
 
 import Scrz.Types
 import Scrz.Utils
 import Scrz.Http
-import Scrz.Log
 import Scrz.Btrfs
 
 
 baseImageDirectory :: String
 baseImageDirectory = "/var/lib/scrz/images"
-
-imageBasePathS :: String -> String
-imageBasePathS = (</>) baseImageDirectory
-
-imageContentPathS :: String -> String
-imageContentPathS image = imageBasePathS image </> "content"
-
-imageVolumePathS :: String -> String
-imageVolumePathS image = imageBasePathS image </> "rootfs"
-
-imageMetaPathS :: String -> String
-imageMetaPathS image = imageBasePathS image </> "meta"
 
 
 listImageIds :: Scrz [Text]
@@ -94,18 +74,6 @@ loadImageFuzzy prefix = do
     case filter (\x -> T.isPrefixOf prefix x) ids of
         [iId] -> (,) <$> pure iId <*> loadImageManifest ("/var/lib/scrz/images/" <> iId <> "/manifest")
         _     -> throwError $ InternalError $ "Not a unique image id: " <> prefix
-
-
-deleteImageClone :: String -> IO ()
-deleteImageClone path = do
-    btrfsSubvolDelete path
-
-
-unlessIO :: IO Bool -> IO () -> IO ()
-unlessIO conditionAction thenAction = do
-    condition <- conditionAction
-    unless condition thenAction
-
 
 
 data UIMEntry = UIMEntry
@@ -194,19 +162,6 @@ imageIdFromFile path = do
     (hash, _) <- hashFileSHA512 path
     return $ "sha512-" <> T.pack hash
 
-
-
-destroyImage :: String -> IO ()
-destroyImage localImageId = do
-    volumeExists <- doesDirectoryExist vp
-    when volumeExists $ do
-        btrfsSubvolDelete vp
-
-    removeDirectoryRecursive $ imageBasePathS localImageId
-
-  where
-
-    vp = imageVolumePathS localImageId
 
 
 createTarball :: String -> String -> IO ()
