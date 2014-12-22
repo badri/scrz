@@ -33,7 +33,8 @@ newId = evalRandIO (sequence (replicate 10 rnd))
 
 exec :: String -> [ String ] -> IO ProcessHandle
 exec cmd args = do
-    (_, _, _, p) <- createProcess (proc cmd args)
+    devnull <- openFile "/dev/null" WriteMode
+    (_, _, _, p) <- createProcess ((proc cmd args) { std_out = UseHandle devnull, std_err = UseHandle devnull })
     return p
 
 execEnv :: String -> [ String ] -> [ (String,String) ] -> Maybe Handle -> IO ProcessID
