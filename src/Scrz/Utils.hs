@@ -14,6 +14,7 @@ import Control.Monad
 import System.Posix.Types
 import System.Posix.Process
 import System.Posix.IO
+import System.IO
 import Data.Maybe
 import Foreign.C.Types
 import Control.Exception
@@ -33,9 +34,9 @@ newId = evalRandIO (sequence (replicate 10 rnd))
 
 exec :: String -> [ String ] -> IO ProcessHandle
 exec cmd args = do
-    devnull <- openFile "/dev/null" WriteMode
-    (_, _, _, p) <- createProcess ((proc cmd args) { std_out = UseHandle devnull, std_err = UseHandle devnull })
-    return p
+    withFile "/dev/null" WriteMode $ \fh -> do
+        (_, _, _, p) <- createProcess ((proc cmd args) { std_out = UseHandle fh, std_err = UseHandle fh })
+        return p
 
 execEnv :: String -> [ String ] -> [ (String,String) ] -> Maybe Handle -> IO ProcessID
 execEnv cmd args environment mbHandle = do
