@@ -14,6 +14,7 @@ import Options.Applicative.Types
 import System.Directory (renameFile, getDirectoryContents, copyFile)
 import System.Posix.Files
 import Network.Etcd
+import Data.Maybe
 
 import           Data.Time.Format.Human
 
@@ -25,6 +26,14 @@ import           Data.Text (Text)
 import qualified Data.Text as T
 
 import           Data.AppContainer.Types
+
+import           Data.Aeson
+import           Data.UUID
+import           Data.SemVer
+import           Data.Text.Encoding
+import qualified Data.ByteString.Lazy as LB
+
+import           System.Random
 
 import Scrz.Image
 import Scrz.Types
@@ -54,11 +63,13 @@ data Command
     | ShowWorkspace
     | RemoveWorkspaceImage !Text
     | PackImage !Text !Text
+    | ListContainers !Text
+    | CreateContainer !Text !Text
     | RemoveContainer !Text !Text
 
 
-etcdClient :: Options -> IO Client
-etcdClient opts = case optEtcd opts of
+etcdClient :: Options -> Scrz Client
+etcdClient opts = liftIO $ case optEtcd opts of
     Nothing -> createClient ["http://localhost:4001"]
     Just hn -> createClient [hn]
 
@@ -174,16 +185,65 @@ run (Invocation opts (PackImage manifest name)) = do
         Left e -> error (show e)
         Right _ -> return ()
 
+run (Invocation opts (ListContainers mId)) = do
+    ires <- runExceptT $ do
+        client <- etcdClient opts
+        containers <- liftIO $ listDirectoryContents client $
+            "/scrz/hosts/" <> mId <> "/containers/"
+
+        forM containers $ \node -> do
+            mbNode <- liftIO $ get client $ (_nodeKey node <> "/manifest")
+            case mbNode of
+                Nothing -> throwError $ InternalError $ "No manifest"
+                Just mfn -> case eitherDecode (rValueLB mfn) of
+                    Left e -> throwError $ InternalError $ T.pack e
+                    Right crm -> return crm
+
+    case ires of
+        Left e -> error (show e)
+        Right containers -> do
+            forM_ containers $ \ContainerRuntimeManifest{..} ->
+                print crmUUID
+
+run (Invocation opts (CreateContainer mId imageName)) = do
+    ires <- runExceptT $ do
+        client <- etcdClient opts
+        uuid <- liftIO $ randomIO
+        let crm = ContainerRuntimeManifest
+                { crmUUID = uuid
+                , crmVersion = version 0 1 1 [] []
+                , crmImages = [ Image imageName "" ]
+                , crmVolumes = []
+                }
+
+        void $ liftIO $ set client
+            ("/scrz/hosts/" <> mId <> "/containers/" <> T.pack (Data.UUID.toString uuid) <> "/manifest")
+            (decodeUtf8 $ LB.toStrict $ encode crm)
+            Nothing
+
+        return crm
+
+
+    case ires of
+        Left e -> error (show e)
+        Right ContainerRuntimeManifest{..} -> do
+            print crmUUID
+            return ()
+
+
 run (Invocation opts (RemoveContainer mId cId)) = do
     ires <- runExceptT $ do
-        client <- liftIO $ etcdClient opts
+        client <- etcdClient opts
         liftIO $ removeDirectoryRecursive client $
             "/scrz/hosts/" <> mId <> "/containers/" <> cId
 
-    case ires :: Either Error () of
+    case ires of
         Left e -> error (show e)
         Right _ -> return ()
 
+
+rValueLB :: Node -> LB.ByteString
+rValueLB response = LB.fromStrict $ encodeUtf8 $ fromJust $ _nodeValue response
 
 parseInvocation :: Parser Invocation
 parseInvocation = Invocation <$> parseOptions <*> parseCommand
@@ -215,6 +275,12 @@ parseCommand = subparser $ mconcat
     , command "pack-image"
         (parsePackImage `withInfo` "Pack a workspace image into an ACI archive")
 
+    , command "list-containers"
+        (parseListContainers `withInfo` "List all containers on a particular host")
+
+    , command "create-container"
+        (parseCreateContainer `withInfo` "Create a new container from an image name on the given host")
+
     , command "remove-container"
         (parseRemoveContainer `withInfo` "Remove a container from the etcd runtime configuration")
     ]
@@ -245,6 +311,15 @@ parseRemoveWorkspaceImage = RemoveWorkspaceImage
 parsePackImage :: Parser Command
 parsePackImage = PackImage
     <$> argument text (metavar "MANIFEST")
+    <*> argument text (metavar "IMAGE-NAME")
+
+parseListContainers :: Parser Command
+parseListContainers = ListContainers
+    <$> argument text (metavar "MACHINE")
+
+parseCreateContainer :: Parser Command
+parseCreateContainer = CreateContainer
+    <$> argument text (metavar "MACHINE")
     <*> argument text (metavar "IMAGE-NAME")
 
 parseRemoveContainer :: Parser Command
