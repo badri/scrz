@@ -7,6 +7,7 @@ module Main where
 
 import Control.Monad
 import Control.Monad.Except
+import Control.Concurrent
 import System.Directory
 
 import Scrz.Image
@@ -79,9 +80,18 @@ run (Options (Run cId)) = do
 
             let App{..} = fromJust imApp
             let args = [ "-D", containerRootfs, "-M", Data.UUID.toString crmUUID, "--" ] ++ map T.unpack appExec
-            p <- execEnv "systemd-nspawn" args [] Nothing
-            putStrLn $ "Waiting for systemd-nspawn to exit... " ++ show p
-            void $ waitE p
+            p <- exec "systemd-nspawn" args
+
+            void $ forkIO $ forever $ do
+                mbCM <- runExceptT $ lookupContainerManifest cId
+                case mbCM of
+                    Right _ -> threadDelay $ 1000 * 1000
+                    Left _ -> do
+                        putStrLn $ "Container no longer active, killing..."
+                        kill p
+
+            putStrLn $ "Waiting for systemd-nspawn to exit... "
+            void $ wait p
 
             btrfsSubvolDelete containerRootfs
 

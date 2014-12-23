@@ -19,12 +19,6 @@ import Data.Maybe
 import Foreign.C.Types
 import Control.Exception
 
-foreign import ccall unsafe "login_tty"
-  c_login_tty :: CInt -> IO CInt
-
-newSession :: Fd -> IO ()
-newSession fd = do
-    void $ c_login_tty (fromIntegral fd)
 
 newId :: IO String
 newId = evalRandIO (sequence (replicate 10 rnd))
@@ -38,22 +32,10 @@ exec cmd args = do
         (_, _, _, p) <- createProcess ((proc cmd args) { std_out = UseHandle fh, std_err = UseHandle fh })
         return p
 
-execEnv :: String -> [ String ] -> [ (String,String) ] -> Maybe Handle -> IO ProcessID
-execEnv cmd args environment mbHandle = do
-    child <- forkProcess $ do
-        when (isJust mbHandle) $ do
-            fd <- handleToFd $ fromJust mbHandle
-            newSession fd
-
-        executeFile cmd True args (Just environment)
-
-    return child
-
-waitE :: ProcessID -> IO ()
-waitE p = void (getProcessStatus True True p) `catch` ignoreException
-  where
-    ignoreException :: SomeException -> IO ()
-    ignoreException _ = return ()
+execEnv :: String -> [ String ] -> [ (String,String) ] -> IO ProcessHandle
+execEnv cmd args environment = do
+    (_, _, _, p) <- createProcess $ (proc cmd args) { env = Just environment }
+    return p
 
 wait :: ProcessHandle -> IO ()
 wait = void . waitForProcess
