@@ -11,8 +11,9 @@ import Control.Monad.Reader
 import Options.Applicative
 import Options.Applicative.Types
 
-import System.Directory
+import System.Directory (renameFile, getDirectoryContents, copyFile)
 import System.Posix.Files
+import Network.Etcd
 
 import           Data.Time.Format.Human
 
@@ -34,7 +35,16 @@ import Scrz.Utils
 
 
 
-data Options = Options !Command
+-- | The top-level data type describing what the user wants to do with us.
+data Invocation = Invocation
+    { iOptions :: !Options
+    , iCommand :: !Command
+    }
+
+-- | Global options which available to all commands.
+data Options = Options
+    { optEtcd :: !(Maybe Text)
+    }
 
 data Command
     = Version
@@ -44,6 +54,14 @@ data Command
     | ShowWorkspace
     | RemoveWorkspaceImage !Text
     | PackImage !Text !Text
+    | RemoveContainer !Text !Text
+
+
+etcdClient :: Options -> IO Client
+etcdClient opts = case optEtcd opts of
+    Nothing -> createClient ["http://localhost:4001"]
+    Just hn -> createClient [hn]
+
 
 
 workspacePath :: Text
@@ -56,19 +74,19 @@ main = do
     disableOutputBuffering
 
     run =<< execParser
-        (parseOptions `withInfo` "scrz")
+        (parseInvocation `withInfo` "scrz")
 
-run :: Options -> IO ()
-run (Options Version) = do
+run :: Invocation -> IO ()
+run (Invocation opts Version) = do
     putStrLn "v0.0.1"
 
-run (Options (Fetch name)) = do
+run (Invocation opts (Fetch name)) = do
     res <- runExceptT $ fetchImage name
     case res of
         Left e -> error $ show e
         Right (oid, _) -> putStrLn $ T.unpack oid
 
-run (Options (Clone dst src)) = do
+run (Invocation opts (Clone dst src)) = do
     ret <- runExceptT $ do
         (iId, im) <- loadImageFuzzy src
         mkdir workspacePath
@@ -80,7 +98,7 @@ run (Options (Clone dst src)) = do
         Left e -> error $ show e
         Right _ -> return ()
 
-run (Options ListImages) = do
+run (Invocation opts ListImages) = do
     ires <- runExceptT loadImages
     let images = case ires of
             Left e -> error (show e)
@@ -100,7 +118,7 @@ run (Options ListImages) = do
             , T.unpack $ T.take 27 localImageId
             ]
 
-run (Options ShowWorkspace) = do
+run (Invocation opts ShowWorkspace) = do
     ires <- runExceptT $ do
         entries <- scrzIO $ getDirectoryContents "/var/lib/scrz/workspace"
         return $ map T.pack $ filter (\x -> '.' /= head x) entries
@@ -126,7 +144,7 @@ run (Options ShowWorkspace) = do
             , timeDiff
             ]
 
-run (Options (RemoveWorkspaceImage name)) = do
+run (Invocation opts (RemoveWorkspaceImage name)) = do
     ires <- runExceptT $ do
         scrzIO $ btrfsSubvolDelete $ "/var/lib/scrz/workspace/" <> T.unpack name <> "/rootfs"
 
@@ -134,7 +152,7 @@ run (Options (RemoveWorkspaceImage name)) = do
         Left e -> error (show e)
         Right x -> return x
 
-run (Options (PackImage manifest name)) = do
+run (Invocation opts (PackImage manifest name)) = do
     ires <- runExceptT $ do
         void $ loadImageManifest manifest
         scrzIO $ copyFile (T.unpack manifest) (T.unpack $ workspacePath <> name <> "/manifest")
@@ -156,10 +174,23 @@ run (Options (PackImage manifest name)) = do
         Left e -> error (show e)
         Right _ -> return ()
 
+run (Invocation opts (RemoveContainer mId cId)) = do
+    ires <- runExceptT $ do
+        client <- liftIO $ etcdClient opts
+        liftIO $ removeDirectoryRecursive client $
+            "/scrz/hosts/" <> mId <> "/containers/" <> cId
 
+    case ires :: Either Error () of
+        Left e -> error (show e)
+        Right _ -> return ()
+
+
+parseInvocation :: Parser Invocation
+parseInvocation = Invocation <$> parseOptions <*> parseCommand
 
 parseOptions :: Parser Options
-parseOptions = Options <$> parseCommand
+parseOptions = Options
+    <$> optional (option text (long "etcd-host" <> metavar "HOSTNAME"))
 
 parseCommand :: Parser Command
 parseCommand = subparser $ mconcat
@@ -184,6 +215,8 @@ parseCommand = subparser $ mconcat
     , command "pack-image"
         (parsePackImage `withInfo` "Pack a workspace image into an ACI archive")
 
+    , command "remove-container"
+        (parseRemoveContainer `withInfo` "Remove a container from the etcd runtime configuration")
     ]
 
 
@@ -213,6 +246,11 @@ parsePackImage :: Parser Command
 parsePackImage = PackImage
     <$> argument text (metavar "MANIFEST")
     <*> argument text (metavar "IMAGE-NAME")
+
+parseRemoveContainer :: Parser Command
+parseRemoveContainer = RemoveContainer
+    <$> argument text (metavar "MACHINE")
+    <*> argument text (metavar "CONTAINER")
 
 withInfo :: Parser a -> String -> ParserInfo a
 withInfo opts desc = info (helper <*> opts) $ progDesc desc
