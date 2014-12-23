@@ -15,6 +15,7 @@ import System.Directory (renameFile, getDirectoryContents, copyFile)
 import System.Posix.Files
 import Network.Etcd
 import Data.Maybe
+import Scrz.Etcd
 
 import           Data.Time.Format.Human
 
@@ -63,13 +64,13 @@ data Command
     | ShowWorkspace
     | RemoveWorkspaceImage !Text
     | PackImage !Text !Text
-    | ListContainers !Text
-    | CreateContainer !Text !Text
-    | RemoveContainer !Text !Text
+    | ListContainers !MachineId
+    | CreateContainer !MachineId !Text
+    | RemoveContainer !MachineId !Text
 
 
 etcdClient :: Options -> Scrz Client
-etcdClient opts = liftIO $ case optEtcd opts of
+etcdClient opts = scrzIO $ case optEtcd opts of
     Nothing -> createClient ["http://localhost:4001"]
     Just hn -> createClient [hn]
 
@@ -188,16 +189,13 @@ run (Invocation opts (PackImage manifest name)) = do
 run (Invocation opts (ListContainers mId)) = do
     ires <- runExceptT $ do
         client <- etcdClient opts
-        containers <- liftIO $ listDirectoryContents client $
-            "/scrz/hosts/" <> mId <> "/containers/"
+        containerIds <- listContainerIds client mId
 
-        forM containers $ \node -> do
-            mbNode <- liftIO $ get client $ (_nodeKey node <> "/manifest")
-            case mbNode of
-                Nothing -> throwError $ InternalError $ "No manifest"
-                Just mfn -> case eitherDecode (rValueLB mfn) of
-                    Left e -> throwError $ InternalError $ T.pack e
-                    Right crm -> return crm
+        forM containerIds $ \cId -> do
+            mbCRM <- lookupContainerRuntimeManifest client mId cId
+            case mbCRM of
+                Nothing -> throwError $ InternalError $ "CRM not found"
+                Just crm -> return crm
 
     case ires of
         Left e -> error (show e)
@@ -208,16 +206,16 @@ run (Invocation opts (ListContainers mId)) = do
 run (Invocation opts (CreateContainer mId imageName)) = do
     ires <- runExceptT $ do
         client <- etcdClient opts
-        uuid <- liftIO $ randomIO
+        uuid <- scrzIO $ randomIO
         let crm = ContainerRuntimeManifest
-                { crmUUID = uuid
+                { crmUUID    = uuid
                 , crmVersion = version 0 1 1 [] []
-                , crmImages = [ Image imageName "" ]
+                , crmImages  = [ Image imageName "" ]
                 , crmVolumes = []
                 }
 
-        void $ liftIO $ set client
-            ("/scrz/hosts/" <> mId <> "/containers/" <> T.pack (Data.UUID.toString uuid) <> "/manifest")
+        void $ scrzIO $ set client
+            ("/scrz/hosts/" <> unMachineId mId <> "/containers/" <> T.pack (Data.UUID.toString uuid) <> "/manifest")
             (decodeUtf8 $ LB.toStrict $ encode crm)
             Nothing
 
@@ -234,8 +232,8 @@ run (Invocation opts (CreateContainer mId imageName)) = do
 run (Invocation opts (RemoveContainer mId cId)) = do
     ires <- runExceptT $ do
         client <- etcdClient opts
-        liftIO $ removeDirectoryRecursive client $
-            "/scrz/hosts/" <> mId <> "/containers/" <> cId
+        scrzIO $ removeDirectoryRecursive client $
+            "/scrz/hosts/" <> unMachineId mId <> "/containers/" <> cId
 
     case ires of
         Left e -> error (show e)
@@ -315,16 +313,16 @@ parsePackImage = PackImage
 
 parseListContainers :: Parser Command
 parseListContainers = ListContainers
-    <$> argument text (metavar "MACHINE")
+    <$> argument machineIdRead (metavar "MACHINE")
 
 parseCreateContainer :: Parser Command
 parseCreateContainer = CreateContainer
-    <$> argument text (metavar "MACHINE")
+    <$> argument machineIdRead (metavar "MACHINE")
     <*> argument text (metavar "IMAGE-NAME")
 
 parseRemoveContainer :: Parser Command
 parseRemoveContainer = RemoveContainer
-    <$> argument text (metavar "MACHINE")
+    <$> argument machineIdRead (metavar "MACHINE")
     <*> argument text (metavar "CONTAINER")
 
 withInfo :: Parser a -> String -> ParserInfo a
@@ -333,6 +331,9 @@ withInfo opts desc = info (helper <*> opts) $ progDesc desc
 
 text :: ReadM Text
 text = ReadM (asks T.pack)
+
+machineIdRead :: ReadM MachineId
+machineIdRead = ReadM (asks (MachineId . T.strip . T.pack))
 
 
 

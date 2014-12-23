@@ -42,6 +42,9 @@ data Error
     deriving (Show)
 
 
+newtype MachineId = MachineId { unMachineId :: Text }
+
+
 scrzIO :: IO a -> Scrz a
 scrzIO m = do
     res <- liftIO $ (Right <$> m) `catch` handleException

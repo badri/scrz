@@ -2,6 +2,7 @@
 
 module Scrz.Etcd
     ( listContainerIds
+    , lookupContainerRuntimeManifest
     ) where
 
 import Data.Maybe
@@ -20,20 +21,32 @@ import Network.Etcd
 import Scrz.Utils
 import Scrz.Types
 import Scrz.Host
+import Data.AppContainer.Types
+
 
 localEtcdServer :: [Text]
 localEtcdServer = ["http://localhost:4001"]
 
-listContainerIds :: IO [Text]
-listContainerIds = do
-    Right mId <- runExceptT $ machineId
-    parseServices mId
 
-  where
-    parseServices mId = do
-        client <- createClient localEtcdServer
-        let dir = "/scrz/hosts/" <> mId <> "/containers/"
-        keys <- listDirectoryContents client dir
-        return $ map (T.drop (T.length dir) . _nodeKey) keys
+listContainerIds :: Client -> MachineId -> Scrz [Text]
+listContainerIds client mId = do
+    let dir = "/scrz/hosts/" <> unMachineId mId <> "/containers/"
+    keys <- scrzIO $ listDirectoryContents client dir
+    return $ map (T.drop (T.length dir) . _nodeKey) keys
+
+
+lookupContainerRuntimeManifest :: Client -> MachineId -> Text -> Scrz (Maybe ContainerRuntimeManifest)
+lookupContainerRuntimeManifest client mId cId = do
+    mbNode <- scrzIO $ get client
+        ("/scrz/hosts/" <> unMachineId mId <> "/containers/" <> cId <> "/manifest")
+
+    case mbNode of
+        Nothing -> return Nothing
+        Just node -> case eitherDecode (rValueLB node) of
+            Left e -> throwError $ InternalError $ T.pack e
+            Right x -> return x
+
+rValueLB :: Node -> LB.ByteString
+rValueLB response = LB.fromStrict $ encodeUtf8 $ fromJust $ _nodeValue response
 
 -- /v1/keys/scrz/hosts/{machine-id}/containers/{uuid}/manifest

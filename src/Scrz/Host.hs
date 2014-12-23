@@ -17,9 +17,9 @@ import           Scrz.Btrfs
 
 
 
-machineId :: Scrz Text
+machineId :: Scrz MachineId
 machineId = scrzIO $
-    fmap (T.strip . T.pack) $ readFile "/etc/machine-id"
+    fmap (MachineId . T.strip . T.pack) $ readFile "/etc/machine-id"
 
 
 mkdir :: Text -> Scrz ()

@@ -1,9 +1,11 @@
+{-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Main where
 
 
 import Control.Monad
+import Control.Monad.Except
 
 import Control.Exception
 import Control.Concurrent
@@ -12,6 +14,8 @@ import Scrz.Log
 import Scrz.Utils
 import Scrz.Etcd
 import Scrz.Host
+import Scrz.Types
+import Network.Etcd
 
 import Data.Monoid
 import qualified Data.Text as T
@@ -54,10 +58,16 @@ run (Options Run) = do
     delay = 10 * 1000 * 1000
 
     syncContainerSupervisors = do
-        keys <- listContainerIds
-        forM_ keys $ \key -> do
-            exec "systemctl" ["start", "scrz-container-supervisor@" <> T.unpack key <> ".service"] >>= fatal
-            return ()
+        res <- runExceptT $ do
+            mId <- machineId
+            client <- scrzIO $ createClient ["http://localhost:4001"]
+            listContainerIds client mId
+
+        case res of
+            Left e -> error $ show e
+            Right keys -> forM_ keys $ \key -> do
+                exec "systemctl" ["start", "scrz-container-supervisor@" <> T.unpack key <> ".service"] >>= fatal
+                return ()
 
 
 parseOptions :: Parser Options

@@ -121,7 +121,7 @@ lookupContainerManifest :: String -> Scrz ContainerRuntimeManifest
 lookupContainerManifest cId = do
     mId <- machineId
     client <- liftIO $ createClient localEtcdServer
-    let key = "/scrz/hosts/" <> mId <> "/containers/" <> T.pack cId <> "/manifest"
+    let key = "/scrz/hosts/" <> unMachineId mId <> "/containers/" <> T.pack cId <> "/manifest"
     mbNode <- liftIO $ get client key
     case mbNode of
         Nothing -> throwError $ InternalError "Node not found"
