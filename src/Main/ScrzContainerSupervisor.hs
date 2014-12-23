@@ -79,7 +79,7 @@ run (Options (Run cId)) = do
                 (containerRootfs)
 
             let App{..} = fromJust imApp
-            let args = [ "-D", containerRootfs, "-M", Data.UUID.toString crmUUID, "--" ] ++ map T.unpack appExec
+            let args = [ "-D", containerRootfs, "-M", Data.UUID.toString crmUUID, "-j", "--" ] ++ map T.unpack appExec
             p <- exec "systemd-nspawn" args
 
             void $ forkIO $ forever $ do
