@@ -19,6 +19,7 @@ import           Data.Maybe (isJust)
 import           Data.Set (Set)
 import           Data.Time.Clock
 import           Data.Word
+import           Data.UUID
 
 import           Data.Text (Text)
 import qualified Data.Text as T
@@ -43,6 +44,9 @@ data Error
 
 
 newtype MachineId = MachineId { unMachineId :: Text }
+
+
+newtype ContainerId = ContainerId { unContainerId :: UUID }
 
 
 scrzIO :: IO a -> Scrz a

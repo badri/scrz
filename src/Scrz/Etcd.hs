@@ -3,6 +3,10 @@
 module Scrz.Etcd
     ( listContainerIds
     , lookupContainerRuntimeManifest
+
+    , machineContainersKey
+    , containerKey
+    , containerManifestKey
     ) where
 
 import Data.Maybe
@@ -13,6 +17,7 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Text.Encoding
 import Data.Monoid
+import Data.UUID
 import Control.Applicative
 import Control.Concurrent.STM
 import Control.Monad
@@ -27,19 +32,40 @@ import Data.AppContainer.Types
 localEtcdServer :: [Text]
 localEtcdServer = ["http://localhost:4001"]
 
+machineContainersKey :: MachineId -> Text
+machineContainersKey mId = mconcat
+    [ "/scrz/hosts/"
+    , unMachineId mId
+    , "/containers"
+    ]
+
+containerKey :: MachineId -> ContainerId -> Text
+containerKey mId cId = mconcat
+    [ "/scrz/hosts/"
+    , unMachineId mId
+    , "/containers/"
+    , T.pack (toString (unContainerId cId))
+    ]
+
+containerManifestKey :: MachineId -> ContainerId -> Text
+containerManifestKey mId cId = mconcat
+    [ "/scrz/hosts/"
+    , unMachineId mId
+    , "/containers/"
+    , T.pack (toString (unContainerId cId))
+    , "/manifest"
+    ]
 
 listContainerIds :: Client -> MachineId -> Scrz [Text]
 listContainerIds client mId = do
-    let dir = "/scrz/hosts/" <> unMachineId mId <> "/containers/"
+    let dir = machineContainersKey mId
     keys <- scrzIO $ listDirectoryContents client dir
     return $ map (T.drop (T.length dir) . _nodeKey) keys
 
 
-lookupContainerRuntimeManifest :: Client -> MachineId -> Text -> Scrz (Maybe ContainerRuntimeManifest)
+lookupContainerRuntimeManifest :: Client -> MachineId -> ContainerId -> Scrz (Maybe ContainerRuntimeManifest)
 lookupContainerRuntimeManifest client mId cId = do
-    mbNode <- scrzIO $ get client
-        ("/scrz/hosts/" <> unMachineId mId <> "/containers/" <> cId <> "/manifest")
-
+    mbNode <- scrzIO $ get client (containerManifestKey mId cId)
     case mbNode of
         Nothing -> return Nothing
         Just node -> case eitherDecode (rValueLB node) of

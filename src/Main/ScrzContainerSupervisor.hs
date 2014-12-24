@@ -7,6 +7,7 @@ module Main where
 
 import Control.Monad
 import Control.Monad.Except
+import Control.Monad.Reader
 import Control.Concurrent
 import System.Directory
 
@@ -15,6 +16,7 @@ import Scrz.Types
 import Scrz.Utils
 import Scrz.Btrfs
 import Scrz.Host
+import Scrz.Etcd
 
 import Network.Etcd
 import Data.AppContainer.Types
@@ -28,6 +30,7 @@ import Data.UUID
 
 import Data.Monoid
 import Options.Applicative
+import Options.Applicative.Types
 
 
 
@@ -35,7 +38,7 @@ data Options = Options !Command
 
 data Command
     = Version
-    | Run !String
+    | Run !ContainerId
 
 
 main :: IO ()
@@ -52,7 +55,7 @@ run (Options Version) = do
     putStrLn "v0.0.1"
 
 run (Options (Run cId)) = do
-    putStrLn $ "Running container supervisor " <> cId <> "..."
+    putStrLn $ "Running container supervisor " <> show (unContainerId cId) <> "..."
 
     mbContainerManifest <- runExceptT $ lookupContainerManifest cId
     case mbContainerManifest of
@@ -104,7 +107,7 @@ parseCommand :: Parser Command
 parseCommand = (subparser $ mconcat
     [ command "version"
         (parseVersion `withInfo` "Print the version and exit")
-    ]) <|> (Run <$> argument str (metavar "CONTAINER"))
+    ]) <|> (Run <$> argument containerIdRead (metavar "CONTAINER"))
 
 parseVersion :: Parser Command
 parseVersion = pure Version
@@ -117,12 +120,19 @@ withInfo opts desc = info (helper <*> opts) $ progDesc desc
 localEtcdServer :: [Text]
 localEtcdServer = ["http://localhost:4001"]
 
-lookupContainerManifest :: String -> Scrz ContainerRuntimeManifest
+containerIdRead :: ReadM ContainerId
+containerIdRead = ReadM $ do
+    val <- ask
+    case fromString val of
+        Nothing -> fail "Not an UUID"
+        Just v  -> return $ ContainerId v
+
+
+lookupContainerManifest :: ContainerId -> Scrz ContainerRuntimeManifest
 lookupContainerManifest cId = do
     mId <- machineId
     client <- liftIO $ createClient localEtcdServer
-    let key = "/scrz/hosts/" <> unMachineId mId <> "/containers/" <> T.pack cId <> "/manifest"
-    mbNode <- liftIO $ get client key
+    mbNode <- liftIO $ get client (containerManifestKey mId cId)
     case mbNode of
         Nothing -> throwError $ InternalError "Node not found"
         Just node -> case eitherDecode (rValueLB node) of

@@ -66,7 +66,7 @@ data Command
     | PackImage !Text !Text
     | ListContainers !MachineId
     | CreateContainer !MachineId !Text
-    | RemoveContainer !MachineId !Text
+    | RemoveContainer !MachineId !ContainerId
 
 
 etcdClient :: Options -> Scrz Client
@@ -192,7 +192,8 @@ run (Invocation opts (ListContainers mId)) = do
         containerIds <- listContainerIds client mId
 
         forM containerIds $ \cId -> do
-            mbCRM <- lookupContainerRuntimeManifest client mId cId
+            let Just cId' = Data.UUID.fromString $ T.unpack cId
+            mbCRM <- lookupContainerRuntimeManifest client mId (ContainerId cId')
             case mbCRM of
                 Nothing -> throwError $ InternalError $ "CRM not found"
                 Just crm -> return crm
@@ -215,7 +216,7 @@ run (Invocation opts (CreateContainer mId imageName)) = do
                 }
 
         void $ scrzIO $ set client
-            ("/scrz/hosts/" <> unMachineId mId <> "/containers/" <> T.pack (Data.UUID.toString uuid) <> "/manifest")
+            (containerManifestKey mId (ContainerId uuid))
             (decodeUtf8 $ LB.toStrict $ encode crm)
             Nothing
 
@@ -232,8 +233,7 @@ run (Invocation opts (CreateContainer mId imageName)) = do
 run (Invocation opts (RemoveContainer mId cId)) = do
     ires <- runExceptT $ do
         client <- etcdClient opts
-        scrzIO $ removeDirectoryRecursive client $
-            "/scrz/hosts/" <> unMachineId mId <> "/containers/" <> cId
+        scrzIO $ removeDirectoryRecursive client (containerKey mId cId)
 
     case ires of
         Left e -> error (show e)
@@ -323,7 +323,7 @@ parseCreateContainer = CreateContainer
 parseRemoveContainer :: Parser Command
 parseRemoveContainer = RemoveContainer
     <$> argument machineIdRead (metavar "MACHINE")
-    <*> argument text (metavar "CONTAINER")
+    <*> argument containerIdRead (metavar "CONTAINER")
 
 withInfo :: Parser a -> String -> ParserInfo a
 withInfo opts desc = info (helper <*> opts) $ progDesc desc
@@ -334,6 +334,13 @@ text = ReadM (asks T.pack)
 
 machineIdRead :: ReadM MachineId
 machineIdRead = ReadM (asks (MachineId . T.strip . T.pack))
+
+containerIdRead :: ReadM ContainerId
+containerIdRead = ReadM $ do
+    val <- ask
+    case fromString val of
+        Nothing -> fail "Not an UUID"
+        Just v  -> return $ ContainerId v
 
 
 
