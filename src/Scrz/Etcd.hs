@@ -11,26 +11,17 @@ module Scrz.Etcd
 
 import Data.Maybe
 import Data.Aeson
-import qualified Data.Map as M
 import qualified Data.ByteString.Lazy as LB
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Text.Encoding
 import Data.Monoid
 import Data.UUID
-import Control.Applicative
-import Control.Concurrent.STM
-import Control.Monad
 import Control.Monad.Except
 import Network.Etcd
-import Scrz.Utils
 import Scrz.Types
-import Scrz.Host
 import Data.AppContainer.Types
 
-
-localEtcdServer :: [Text]
-localEtcdServer = ["http://localhost:4001"]
 
 machineContainersKey :: MachineId -> Text
 machineContainersKey mId = mconcat
