@@ -11,13 +11,6 @@ import Network.BSD (getHostName)
 import Network.Socket
 import Control.Applicative
 import Control.Monad
-import System.Posix.Types
-import System.Posix.Process
-import System.Posix.IO
-import System.IO
-import Data.Maybe
-import Foreign.C.Types
-import Control.Exception
 
 
 newId :: IO String

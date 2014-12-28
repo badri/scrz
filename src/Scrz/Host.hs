@@ -3,6 +3,10 @@ module Scrz.Host
     , mkdir
     , createVolumeSnapshot
     , disableOutputBuffering
+
+    , btrfsSubvolCreate
+    , btrfsSubvolSnapshot
+    , btrfsSubvolDelete
     ) where
 
 
@@ -10,10 +14,11 @@ import           Data.Text (Text)
 import qualified Data.Text as T
 
 import           System.Directory
+import           System.FilePath
 import           System.IO
 
 import           Scrz.Types
-import           Scrz.Btrfs
+import           Scrz.Utils
 
 
 
@@ -28,7 +33,7 @@ mkdir path = scrzIO $
 
 
 createVolumeSnapshot :: Text -> Text -> Scrz ()
-createVolumeSnapshot dst src = scrzIO $
+createVolumeSnapshot dst src =
     btrfsSubvolSnapshot (T.unpack src) (T.unpack dst)
 
 
@@ -36,3 +41,32 @@ disableOutputBuffering :: IO ()
 disableOutputBuffering = do
     hSetBuffering stdout NoBuffering
     hSetBuffering stderr NoBuffering
+
+
+
+btrfsSubvolCreate :: String -> Scrz ()
+btrfsSubvolCreate path = do
+    createParentDirectory path
+    scrzIO $ do
+        fatal =<< exec "btrfs" [ "subvolume", "create", path ]
+
+
+btrfsSubvolSnapshot :: String -> String -> Scrz ()
+btrfsSubvolSnapshot src dst = do
+    createParentDirectory dst
+    scrzIO $ do
+        fatal =<< exec "btrfs" [ "subvolume", "snapshot", src, dst ]
+
+
+btrfsSubvolDelete :: String -> Scrz ()
+btrfsSubvolDelete path = scrzIO $ do
+    fatal =<< exec "btrfs" [ "subvolume", "delete", path ]
+
+
+createParentDirectory :: String -> Scrz ()
+createParentDirectory path = scrzIO $ do
+    createDirectoryIfMissing True (parentDirectoryOf path)
+
+
+parentDirectoryOf :: String -> String
+parentDirectoryOf = joinPath . init . splitDirectories

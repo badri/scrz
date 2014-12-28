@@ -14,7 +14,6 @@ import System.Directory
 import Scrz.Image
 import Scrz.Types
 import Scrz.Utils
-import Scrz.Btrfs
 import Scrz.Host
 import Scrz.Etcd
 
@@ -63,7 +62,7 @@ run (Options (Run cId)) = do
             print e
             putStrLn $ "Container runtime manifest is not available. Shutting down..."
 
-        Right crm@ContainerRuntimeManifest{..} -> do
+        Right ContainerRuntimeManifest{..} -> do
             print crmUUID
 
             let containerPath = "/var/lib/scrz/containers/" ++ Data.UUID.toString crmUUID
@@ -77,7 +76,7 @@ run (Options (Run cId)) = do
                 Left e -> error $ show e
                 Right x -> return x
 
-            btrfsSubvolSnapshot
+            void $ runExceptT $ btrfsSubvolSnapshot
                 ("/var/lib/scrz/images/" <> T.unpack iId <> "/rootfs")
                 (containerRootfs)
 
@@ -96,7 +95,7 @@ run (Options (Run cId)) = do
             putStrLn $ "Waiting for systemd-nspawn to exit... "
             void $ wait p
 
-            btrfsSubvolDelete containerRootfs
+            void $ runExceptT $ btrfsSubvolDelete containerRootfs
 
 
 

@@ -6,34 +6,16 @@
 
 module Scrz.Types where
 
-import           GHC.Generics (Generic)
 
-import           Data.Aeson
-import           Data.Bits
-import           Data.Char (chr)
-import           Data.Hashable
-import           Data.List as L
-import           Data.Map (Map)
-import qualified Data.Map as M
-import           Data.Maybe (isJust)
-import           Data.Set (Set)
-import           Data.Time.Clock
-import           Data.Word
 import           Data.UUID
 
 import           Data.Text (Text)
 import qualified Data.Text as T
 
-import           Text.Printf
-
 import           Control.Applicative
 import           Control.Monad.Except
-import           Control.Concurrent.STM
 import           Control.Exception.Base
 
-import           System.Posix.Types
-
-import           Scrz.Aeson
 
 
 type Scrz = ExceptT Error IO

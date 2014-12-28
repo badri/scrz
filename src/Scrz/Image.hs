@@ -41,7 +41,7 @@ import Control.Applicative
 import Scrz.Types
 import Scrz.Utils
 import Scrz.Http
-import Scrz.Btrfs
+import Scrz.Host
 
 
 baseImageDirectory :: String
@@ -105,7 +105,7 @@ fetchImage name = do
         createDirectoryIfMissing True $ "/var/lib/scrz/images"
 
     -- Map the URL to the ObjectId of the Image.
-    uime@UIMEntry{..} <- liftIO $ do
+    UIMEntry{..} <- liftIO $ do
         let oh = hashSHA512 $ encode url
         exists <- doesFileExist $ "/var/lib/scrz/uim/sha512-" <> oh
         if exists
@@ -137,16 +137,16 @@ fetchImage name = do
                 return ir
 
     -- Unpack the image into a btrfs volume.
-    res <- liftIO $ do
-        de <- doesDirectoryExist $ "/var/lib/scrz/images/" <> T.unpack rObjectId
+    res <- do
+        de <- liftIO $ doesDirectoryExist $ "/var/lib/scrz/images/" <> T.unpack rObjectId
         unless de $ do
-            createDirectoryIfMissing True $ "/var/lib/scrz/images/" <> T.unpack rObjectId
+            liftIO $ createDirectoryIfMissing True $ "/var/lib/scrz/images/" <> T.unpack rObjectId
             btrfsSubvolCreate $ "/var/lib/scrz/images/" <> T.unpack rObjectId <> "/rootfs"
-            unpackTarball
+            liftIO $ unpackTarball
                 ("/var/lib/scrz/objects/" <> T.unpack rObjectId)
                 ("/var/lib/scrz/images/" <> T.unpack rObjectId)
 
-        mf <- LB.readFile $ "/var/lib/scrz/images/" <> T.unpack rObjectId <> "/manifest"
+        mf <- liftIO $ LB.readFile $ "/var/lib/scrz/images/" <> T.unpack rObjectId <> "/manifest"
         return $ eitherDecode mf
 
     case res of

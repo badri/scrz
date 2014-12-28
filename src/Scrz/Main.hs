@@ -40,7 +40,6 @@ import Scrz.Image
 import Scrz.Types
 import Scrz.Log
 import Scrz.Host
-import Scrz.Btrfs
 import Scrz.Utils
 
 
@@ -158,7 +157,7 @@ run (Invocation opts ShowWorkspace) = do
 
 run (Invocation opts (RemoveWorkspaceImage name)) = do
     ires <- runExceptT $ do
-        scrzIO $ btrfsSubvolDelete $ "/var/lib/scrz/workspace/" <> T.unpack name <> "/rootfs"
+        btrfsSubvolDelete $ "/var/lib/scrz/workspace/" <> T.unpack name <> "/rootfs"
 
     case ires of
         Left e -> error (show e)
