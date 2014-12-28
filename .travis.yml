@@ -2,3 +2,7 @@ sudo: false
 language: haskell
 ghc:
   - 7.8
+cache:
+  directories:
+    - /home/travis/.ghc/
+    - /home/travis/.cabal/lib/
