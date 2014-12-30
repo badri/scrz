@@ -22,7 +22,7 @@ pacstrap -i -c -d "$VOLUME" base
 chroot "$VOLUME" pacman-key --init
 
 
-chroot "$VOLUME" rm /etc/machine-id
+chroot "$VOLUME" rm /etc/machine-id /etc/securetty
 systemd-firstboot --root "$VOLUME" --timezone UTC --root-password=root
 
 
