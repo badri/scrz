@@ -22,13 +22,15 @@ pacstrap -i -c -d "$VOLUME" base
 chroot "$VOLUME" pacman-key --init
 
 
-echo "root:root" | chroot "$VOLUME" chpasswd
+chroot "$VOLUME" rm /etc/machine-id
+systemd-firstboot --root "$VOLUME" --timezone UTC --root-password=root
 
 
 MANIFEST="$(mktemp)"
 chmod 644 $MANIFEST
 cat script/systemd-os-image-manifest-template | \
     sed -e "s/{{name}}/arch-$(date +%Y.%m.%d)-64bit/" > $MANIFEST
+
 
 scrz pack-image $MANIFEST arch
 rm $MANIFEST
