@@ -191,8 +191,7 @@ run (Invocation opts (ListContainers mId)) = do
         containerIds <- listContainerIds client mId
 
         forM containerIds $ \cId -> do
-            let Just cId' = Data.UUID.fromString $ T.unpack cId
-            mbCRM <- lookupContainerRuntimeManifest client mId (ContainerId cId')
+            mbCRM <- lookupContainerRuntimeManifest client mId cId
             case mbCRM of
                 Nothing -> throwError $ InternalError $ "CRM not found"
                 Just crm -> return crm

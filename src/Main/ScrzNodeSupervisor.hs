@@ -18,7 +18,7 @@ import Scrz.Types
 import Network.Etcd
 
 import Data.Monoid
-import qualified Data.Text as T
+import Data.UUID
 import Options.Applicative
 
 
@@ -65,8 +65,9 @@ run (Options Run) = do
 
         case res of
             Left e -> error $ show e
-            Right keys -> forM_ keys $ \key -> do
-                exec "systemctl" ["start", "scrz-container-supervisor@" <> T.unpack key <> ".service"] >>= fatal
+            Right keys -> forM_ keys $ \cId -> do
+                let key = toString $ unContainerId cId
+                exec "systemctl" ["start", "scrz-container-supervisor@" <> key <> ".service"] >>= fatal
                 return ()
 
 

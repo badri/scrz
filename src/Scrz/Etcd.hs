@@ -47,11 +47,11 @@ containerManifestKey mId cId = mconcat
     , "/manifest"
     ]
 
-listContainerIds :: Client -> MachineId -> Scrz [Text]
+listContainerIds :: Client -> MachineId -> Scrz [ContainerId]
 listContainerIds client mId = do
     let dir = machineContainersKey mId
     keys <- scrzIO $ listDirectoryContents client dir
-    return $ map (T.drop (T.length dir) . _nodeKey) keys
+    return $ catMaybes $ map (fmap ContainerId . fromString . T.unpack . T.drop (1 + T.length dir) . _nodeKey) keys
 
 
 lookupContainerRuntimeManifest :: Client -> MachineId -> ContainerId -> Scrz (Maybe ContainerRuntimeManifest)
