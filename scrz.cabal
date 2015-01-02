@@ -136,7 +136,7 @@ Executable scrz-container-supervisor
     Build-depends:  time                 >= 0
     Build-depends:  unix                 >= 0
     Build-depends:  optparse-applicative
-    Build-depends:  appc
+    Build-depends:  appc                 >= 0.0.5
     Build-depends:  uuid
 
     Hs-Source-Dirs: src
