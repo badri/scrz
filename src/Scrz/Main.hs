@@ -229,11 +229,24 @@ run (Invocation opts (ListContainers mId)) = do
                 Nothing -> throwError $ InternalError $ "CRM not found"
                 Just crm -> return crm
 
-    case ires of
-        Left e -> error (show e)
-        Right containers -> do
-            forM_ containers $ \ContainerRuntimeManifest{..} ->
-                print crmUUID
+    containers <- case ires of
+        Left e -> error $ show e
+        Right x -> return x
+
+    let headers = [ "CONTAINER ID", "APP" ]
+    rows <- mapM toRow containers
+    tabWriter $ headers : rows
+
+  where
+
+    toRow :: ContainerRuntimeManifest -> IO [String]
+    toRow ContainerRuntimeManifest{..} = do
+        let Image{..} = head crmImages
+        return
+            [ Data.UUID.toString crmUUID
+            , T.unpack imageApp
+            ]
+
 
 run (Invocation opts (CreateContainer mId imageName)) = do
     ires <- runExceptT $ do
