@@ -26,6 +26,9 @@ import           Data.Time.Clock.POSIX
 import           Data.Text (Text)
 import qualified Data.Text as T
 
+import           Data.Map (Map)
+import qualified Data.Map as M
+
 import           Data.AppContainer.Types
 
 import           Data.Aeson
@@ -65,7 +68,7 @@ data Command
     | PackImage !Text !Text
     | ListMachines
     | ListContainers !MachineId
-    | CreateContainer !MachineId !Text
+    | CreateContainer ![Text] !MachineId !Text
     | RemoveContainer !MachineId !ContainerId
 
 
@@ -248,15 +251,22 @@ run (Invocation opts (ListContainers mId)) = do
             ]
 
 
-run (Invocation opts (CreateContainer mId imageName)) = do
+run (Invocation opts (CreateContainer bindings mId imageName)) = do
     ires <- runExceptT $ do
         client <- etcdClient opts
         uuid <- scrzIO $ randomIO
+        volumes <- forM bindings $ \binding -> do
+            case T.splitOn ":" binding of
+                source : fulfills : [] ->
+                    return $ Volume [fulfills] $ HostVolumeSource $
+                        HostVolume source False
+                _ -> fail $ "Could not parse binding " <> T.unpack binding
+
         let crm = ContainerRuntimeManifest
                 { crmUUID    = uuid
                 , crmVersion = version 0 1 1 [] []
                 , crmImages  = [ Image imageName "" ]
-                , crmVolumes = []
+                , crmVolumes = volumes
                 }
 
         void $ scrzIO $ set client
@@ -367,7 +377,8 @@ parseListContainers = ListContainers
 
 parseCreateContainer :: Parser Command
 parseCreateContainer = CreateContainer
-    <$> argument machineIdRead (metavar "MACHINE")
+    <$> many (option text (long "bind" <> metavar "SOURCE:FULFILLS"))
+    <*> argument machineIdRead (metavar "MACHINE")
     <*> argument text (metavar "IMAGE-NAME")
 
 parseRemoveContainer :: Parser Command
