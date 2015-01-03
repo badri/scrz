@@ -7,8 +7,12 @@ module Scrz.Host
     , btrfsSubvolCreate
     , btrfsSubvolSnapshot
     , btrfsSubvolDelete
+
+    , fullyQualifiedDomainName
     ) where
 
+
+import           Control.Applicative
 
 import           Data.Text (Text)
 import qualified Data.Text as T
@@ -16,6 +20,9 @@ import qualified Data.Text as T
 import           System.Directory
 import           System.FilePath
 import           System.IO
+
+import           Network.BSD (getHostName)
+import           Network.Socket
 
 import           Scrz.Types
 import           Scrz.Utils
@@ -70,3 +77,11 @@ createParentDirectory path = scrzIO $ do
 
 parentDirectoryOf :: String -> String
 parentDirectoryOf = joinPath . init . splitDirectories
+
+
+fullyQualifiedDomainName :: Scrz (Maybe Text)
+fullyQualifiedDomainName = scrzIO $ do
+    hostName <- Just <$> getHostName
+    addrInfo <- head <$> getAddrInfo Nothing hostName Nothing
+    (fqdn, _) <- getNameInfo [] True False (addrAddress addrInfo)
+    return $ fmap T.pack fqdn

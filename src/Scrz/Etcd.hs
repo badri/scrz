@@ -2,6 +2,8 @@
 
 module Scrz.Etcd
     ( listMachineIds
+    , machineDescription
+    , updateMachineDescription
 
     , listContainerIds
     , lookupContainerRuntimeManifest
@@ -24,6 +26,13 @@ import Network.Etcd
 import Scrz.Types
 import Data.AppContainer.Types
 
+
+machineDescriptionKey :: MachineId -> Text
+machineDescriptionKey mId = mconcat
+    [ "/scrz/hosts/"
+    , unMachineId mId
+    , "/description"
+    ]
 
 machineContainersKey :: MachineId -> Text
 machineContainersKey mId = mconcat
@@ -54,6 +63,22 @@ listMachineIds client = do
     let dir = "/scrz/hosts"
     keys <- scrzIO $ listDirectoryContents client dir
     return $ map (MachineId . T.drop (1 + T.length dir) . _nodeKey) keys
+
+machineDescription :: Client -> MachineId -> Scrz (Maybe Machine)
+machineDescription client mId = do
+    mbNode <- scrzIO $ get client (machineDescriptionKey mId)
+    case mbNode of
+        Nothing -> return Nothing
+        Just node -> case eitherDecode (rValueLB node) of
+            Left e -> throwError $ InternalError $ T.pack e
+            Right x -> return $ Just x
+
+updateMachineDescription :: Client -> Machine -> Scrz ()
+updateMachineDescription client m = do
+    void $ scrzIO $ set client
+        (machineDescriptionKey $ machId m)
+        (decodeUtf8 $ LB.toStrict $ encode m)
+        Nothing
 
 
 listContainerIds :: Client -> MachineId -> Scrz [ContainerId]

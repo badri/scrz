@@ -18,7 +18,9 @@ import Scrz.Types
 import Network.Etcd
 
 import Data.Monoid
+import Data.Maybe
 import Data.UUID
+import qualified Data.Text as T
 import Options.Applicative
 
 
@@ -34,6 +36,18 @@ main :: IO ()
 main = do
 
     disableOutputBuffering
+
+    md <- runExceptT $ do
+        client <- scrzIO $ createClient ["http://localhost:4001"]
+
+        mId <- machineId
+        hostName <- fromMaybe "localhost" <$> fullyQualifiedDomainName
+
+        updateMachineDescription client $ Machine mId hostName
+
+    case md of
+        Left e -> error $ show e
+        Right _ -> return ()
 
     run =<< execParser
         (parseOptions `withInfo` "scrz node supervisor")

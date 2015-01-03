@@ -25,7 +25,6 @@ import           Data.Time.Clock.POSIX
 
 import           Data.Text (Text)
 import qualified Data.Text as T
-import qualified Data.Text.IO as T
 
 import           Data.AppContainer.Types
 
@@ -196,7 +195,7 @@ run (Invocation opts ListMachines) = do
         Left e -> error $ show e
         Right x -> return x
 
-    let headers = [ "MACHINE ID" ]
+    let headers = [ "MACHINE ID", "HOSTNAME" ]
     rows <- mapM toRow machineIds
     tabWriter $ headers : rows
 
@@ -204,8 +203,18 @@ run (Invocation opts ListMachines) = do
 
     toRow :: MachineId -> IO [String]
     toRow mId = do
+        md <- runExceptT $ do
+            client <- etcdClient opts
+            machineDescription client mId
+
+        hostname <- case md of
+            Left _ -> return "-"
+            Right Nothing -> return "-"
+            Right (Just Machine{..}) -> return machHostName
+
         return
             [ T.unpack $ unMachineId mId
+            , T.unpack hostname
             ]
 
 
