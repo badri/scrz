@@ -1,7 +1,9 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module Scrz.Etcd
-    ( listContainerIds
+    ( listMachineIds
+
+    , listContainerIds
     , lookupContainerRuntimeManifest
 
     , machineContainersKey
@@ -46,6 +48,13 @@ containerManifestKey mId cId = mconcat
     , T.pack (toString (unContainerId cId))
     , "/manifest"
     ]
+
+listMachineIds :: Client -> Scrz [MachineId]
+listMachineIds client = do
+    let dir = "/scrz/hosts"
+    keys <- scrzIO $ listDirectoryContents client dir
+    return $ map (MachineId . T.drop (1 + T.length dir) . _nodeKey) keys
+
 
 listContainerIds :: Client -> MachineId -> Scrz [ContainerId]
 listContainerIds client mId = do

@@ -25,6 +25,7 @@ import           Data.Time.Clock.POSIX
 
 import           Data.Text (Text)
 import qualified Data.Text as T
+import qualified Data.Text.IO as T
 
 import           Data.AppContainer.Types
 
@@ -63,6 +64,7 @@ data Command
     | ShowWorkspace
     | RemoveWorkspaceImage !Text
     | PackImage !Text !Text
+    | ListMachines
     | ListContainers !MachineId
     | CreateContainer !MachineId !Text
     | RemoveContainer !MachineId !ContainerId
@@ -185,6 +187,28 @@ run (Invocation opts (PackImage manifest name)) = do
         Left e -> error (show e)
         Right _ -> return ()
 
+run (Invocation opts ListMachines) = do
+    ires <- runExceptT $ do
+        client <- etcdClient opts
+        listMachineIds client
+
+    machineIds <- case ires of
+        Left e -> error $ show e
+        Right x -> return x
+
+    let headers = [ "MACHINE ID" ]
+    rows <- mapM toRow machineIds
+    tabWriter $ headers : rows
+
+  where
+
+    toRow :: MachineId -> IO [String]
+    toRow mId = do
+        return
+            [ T.unpack $ unMachineId mId
+            ]
+
+
 run (Invocation opts (ListContainers mId)) = do
     ires <- runExceptT $ do
         client <- etcdClient opts
@@ -271,6 +295,9 @@ parseCommand = subparser $ mconcat
     , command "pack-image"
         (parsePackImage `withInfo` "Pack a workspace image into an ACI archive")
 
+    , command "list-machines"
+        (parseListMachines `withInfo` "List all machines")
+
     , command "list-containers"
         (parseListContainers `withInfo` "List all containers on a particular host")
 
@@ -308,6 +335,9 @@ parsePackImage :: Parser Command
 parsePackImage = PackImage
     <$> argument text (metavar "MANIFEST")
     <*> argument text (metavar "IMAGE-NAME")
+
+parseListMachines :: Parser Command
+parseListMachines = pure ListMachines
 
 parseListContainers :: Parser Command
 parseListContainers = ListContainers
