@@ -19,11 +19,9 @@ btrfs subvol create "$VOLUME"
 pacstrap -i -c -d "$VOLUME" base
 
 
-chroot "$VOLUME" pacman-key --init
-
-
-chroot "$VOLUME" rm /etc/machine-id /etc/securetty
-systemd-firstboot --root "$VOLUME" --timezone UTC --root-password=root
+systemd-nspawn -D "$VOLUME" pacman-key --init
+systemd-nspawn -D "$VOLUME" rm /etc/machine-id /etc/securetty
+systemd-nspawn -D "$VOLUME" systemd-firstboot --timezone UTC --root-password=root
 
 
 MANIFEST="$(mktemp)"
