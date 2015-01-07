@@ -184,8 +184,9 @@ run (Invocation opts (Build scrzfile)) = do
         btrfsSubvolDelete
             (T.unpack $ workspacePath <> wsId <> "/rootfs")
 
-    -- print sf
-    return ()
+    case sf of
+        Left e -> error $ show e
+        Right _ -> return ()
 
 run (Invocation opts ListImages) = do
     ires <- runExceptT loadImages
