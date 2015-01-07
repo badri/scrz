@@ -479,7 +479,7 @@ packImage im ws = do
     tmpId <- scrzIO $ newId
 
     scrzIO $ LB.writeFile
-        (T.unpack $ ws <> "manifest")
+        (T.unpack $ ws <> "/manifest")
         (encode im)
 
     scrzIO $ createTarball
