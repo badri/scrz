@@ -15,7 +15,11 @@ import System.Directory (renameFile, getDirectoryContents, copyFile)
 import System.Posix.Files
 import Network.Etcd
 import Data.Maybe
+import Data.SemVer
+import qualified Data.ByteString.Lazy as LB
 import Scrz.Etcd
+import Scrz.Scrzfile
+import qualified Data.Text.IO as T
 
 import           Data.Time.Format.Human
 
@@ -62,6 +66,7 @@ data Command
     = Version
     | Fetch !Text
     | Clone !Text !Text
+    | Build !Text
     | ListImages
     | ShowWorkspace
     | RemoveWorkspaceImage !Text
@@ -112,6 +117,75 @@ run (Invocation opts (Clone dst src)) = do
     case ret of
         Left e -> error $ show e
         Right _ -> return ()
+
+run (Invocation opts (Build scrzfile)) = do
+    sf <- runExceptT $ do
+        wsId <- T.pack <$> scrzIO newId
+        let containerRootfs = (workspacePath <> wsId <> "/rootfs")
+
+        contents <- scrzIO $ T.readFile $ T.unpack scrzfile
+        ctx <- mkContext containerRootfs
+        sf <- case parseScrzfile ctx contents of
+            Left e -> fail e
+            Right x -> pure x
+
+        -- scrzIO $ print sf
+        (oId, _) <- fetchImage (baseImage sf)
+
+        -- scrzIO $ print wsId
+        mkdir workspacePath
+
+        -- scrzIO $ putStrLn $ "Creating subvolume from " <> show oId
+
+        createVolumeSnapshot
+            containerRootfs
+            ("/var/lib/scrz/images/" <> oId <> "/rootfs")
+
+        -- scrzIO $ putStrLn "Executing build instructions"
+        forM (buildInstructions sf) $ \bi -> do
+            scrzIO $ do
+                -- putStrLn "Executing..."
+                -- print bi
+                return ()
+
+            case bi of
+                (Run (Cmd cmd args)) -> do
+                    p <- scrzIO $ exec
+                        (T.unpack cmd)
+                        (map T.unpack args)
+
+                    scrzIO $ fatal p
+
+                (Spawn bindings (Cmd cmd ca)) -> do
+                    let args = [ "-D", T.unpack containerRootfs
+                               , "-j"
+                               ] ++ map (\(Binding src path) -> "--bind=" <> T.unpack src <> ":" <> T.unpack path) bindings
+                                ++ ["--"]
+                                ++ [T.unpack cmd]
+                                ++ map T.unpack ca
+
+                    -- scrzIO $ print args
+                    p <- scrzIO $ exec "systemd-nspawn" args
+                    scrzIO $ fatal p
+
+
+
+        let imageManifest = ImageManifest
+                { imName = name sf
+                , imVersion = version 0 1 1 [] []
+                , imLabels = []
+                , imApp = app sf
+                , imDependencies = []
+                }
+
+        objId <- packImage imageManifest (workspacePath <> wsId)
+        scrzIO $ T.putStrLn objId
+
+        btrfsSubvolDelete
+            (T.unpack $ workspacePath <> wsId <> "/rootfs")
+
+    -- print sf
+    return ()
 
 run (Invocation opts ListImages) = do
     ires <- runExceptT loadImages
@@ -169,21 +243,9 @@ run (Invocation opts (RemoveWorkspaceImage name)) = do
 
 run (Invocation opts (PackImage manifest name)) = do
     ires <- runExceptT $ do
-        void $ loadImageManifest manifest
-        scrzIO $ copyFile (T.unpack manifest) (T.unpack $ workspacePath <> name <> "/manifest")
-        tmpId <- scrzIO $ newId
-        scrzIO $ createTarball
-            ("/var/lib/scrz/tmp/" <> tmpId)
-            (T.unpack $ workspacePath <> name)
-
-        (hash, len) <- scrzIO $ hashFileSHA512 $ ("/var/lib/scrz/tmp/" <> tmpId)
-
-        scrzIO $ renameFile
-            ("/var/lib/scrz/tmp/" <> tmpId)
-            ("/var/lib/scrz/objects/sha512-" <> hash)
-
-        scrzIO $ putStrLn $ "sha512-" <> hash
-        return ()
+        im <- loadImageManifest manifest
+        h <- packImage im (workspacePath <> name)
+        scrzIO $ putStrLn $ T.unpack $ h
 
     case ires of
         Left e -> error (show e)
@@ -318,6 +380,9 @@ parseCommand = subparser $ mconcat
     , command "list-images"
         (parseListImages `withInfo` "List all images on the host")
 
+    , command "build"
+        (parseBuild `withInfo` "Build an image using instructions in a Scrzfile")
+
     , command "show-workspace"
         (parseShowWorkspace `withInfo` "Show volumes in the workspace")
 
@@ -347,6 +412,10 @@ parseVersion = pure Version
 parseFetch :: Parser Command
 parseFetch = Fetch
     <$> argument text (metavar "URL")
+
+parseBuild :: Parser Command
+parseBuild = Build
+    <$> argument text (metavar "SCRZFILE")
 
 parseClone :: Parser Command
 parseClone = Clone
@@ -404,13 +473,34 @@ containerIdRead = ReadM $ do
         Just v  -> return $ ContainerId v
 
 
+packImage :: ImageManifest -> Text -> Scrz Text
+packImage im ws = do
+    tmpId <- scrzIO $ newId
+
+    scrzIO $ LB.writeFile
+        (T.unpack $ ws <> "manifest")
+        (encode im)
+
+    scrzIO $ createTarball
+        ("/var/lib/scrz/tmp/" <> tmpId)
+        (T.unpack ws)
+
+    (hash, len) <- scrzIO $ hashFileSHA512 $ ("/var/lib/scrz/tmp/" <> tmpId)
+
+    scrzIO $ renameFile
+        ("/var/lib/scrz/tmp/" <> tmpId)
+        ("/var/lib/scrz/objects/sha512-" <> hash)
+
+    return $ "sha512-" <> T.pack hash
+
+
 
 -- run :: [ String ] -> IO ()
 --
 -- run [ "pack-image", id' ]            = packImage id'
 -- run [ "list-images" ]                = listImages
 -- run [ "destroy-image", id' ]         = destroyImage id'
---
+    --
 -- run [ "fetch", url, checksum, size ] = downloadImage url checksum (read size)
 -- run [ "update-service-image", etcdHost, host, service, image, url] = updateServiceImage etcdHost host service image url
 --

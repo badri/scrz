@@ -1,0 +1,29 @@
+
+name
+    images.scrz.io/example
+
+baseImage
+    images.scrz.io/arch-2014.12.21-64bit
+
+
+buildInstructions
+    run echo test
+    spawn [($root,/repo)] touch /repo/test
+    run rm $root/test
+
+
+app
+    exec 0 0 /usr/lib/systemd/systemd
+
+    environment
+        SECRET "token"
+        ENV    "production"
+
+    mountPoints
+        mail-spool-directory /var/spool/mail ro
+        home                 /home
+        arst                 /qwfp
+
+    ports
+        ssh  tcp/22
+        smtp tcp/25 socketActivated
