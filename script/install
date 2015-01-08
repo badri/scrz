@@ -1,0 +1,13 @@
+#!/bin/sh
+
+set -e
+
+PREFIX=${PREFIX-/opt/scrz}
+DESTDIR=${DESTDIR-/}
+
+cabal configure --prefix=$PREFIX
+cabal build
+
+cabal copy --destdir=$DESTDIR
+
+cp systemd/* $DESTDIR/etc/systemd/system/
