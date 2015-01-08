@@ -158,7 +158,7 @@ run (Invocation opts (Build scrzfile)) = do
 
                 (Spawn bindings (Cmd cmd ca)) -> do
                     let args = [ "-D", T.unpack containerRootfs
-                               , "-j"
+                               -- , "-j"
                                ] ++ map (\(Binding src path) -> "--bind=" <> T.unpack src <> ":" <> T.unpack path) bindings
                                 ++ ["--"]
                                 ++ [T.unpack cmd]
