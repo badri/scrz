@@ -13,11 +13,12 @@ module Scrz.Scrzfile
 
 
 import Control.Applicative
+import Control.Monad
 import Data.AppContainer.Types
-import Data.Attoparsec.Text
+import Data.Attoparsec.Text as AP
 import Data.Monoid
 import Data.Char
-import Data.Maybe
+-- import Data.Maybe
 import Scrz.Types
 import qualified Data.Map as M
 import System.Directory (getCurrentDirectory)
@@ -26,7 +27,7 @@ import System.Directory (getCurrentDirectory)
 import           Data.Text (Text)
 import qualified Data.Text as T
 
-import Debug.Trace
+-- import Debug.Trace
 
 
 data Context = Context
@@ -90,10 +91,7 @@ parseScrzfile ctx input = parseOnly (scrzfileParser ctx) input
 scrzfileParser :: Context -> Parser Scrzfile
 scrzfileParser ctx = do
     sections <- many' $ do
-        skipSpace
-        sec <- sectionParser ctx
-        skipSpace
-        return sec
+        sectionParser ctx
 
     -- trace (show sections) $ return ()
 
@@ -104,10 +102,12 @@ scrzfileParser ctx = do
         <*> findSection "app" sections appDefS
 
   where
+
+    findSection :: String -> [Section] -> (Section -> Maybe a) -> Parser a
     findSection n [] _ = fail $ "Section not found: " <> n
     findSection n (x:xs) f = case f x of
         Nothing -> findSection n xs f
-        Just x -> pure x
+        Just s -> pure s
 
     nameS (Name n) = Just n
     nameS _        = Nothing
@@ -134,10 +134,11 @@ scrzfileParser ctx = do
         maybe d pure mbR
 
 
-    findAppDef n [] _ = Nothing
+    findAppDef :: Text -> [AppDef] -> (AppDef -> Maybe a) -> Maybe a
+    findAppDef _ [] _ = Nothing
     findAppDef n (x:xs) f = case f x of
         Nothing -> findAppDef n xs f
-        Just x -> Just x
+        Just ad -> Just ad
 
     execS (Exec _ _ exec) = Just exec
     execS _ = Nothing
@@ -157,32 +158,45 @@ scrzfileParser ctx = do
     portsS (Ports p) = Just $ map (\(n,proto,port,sa) -> Port n proto port sa) p
     portsS _ = Nothing
 
+
+blankLine :: Parser ()
+blankLine = do
+    skipHorizontalSpace
+    endOfLine
+
+skipHorizontalSpace :: Parser ()
+skipHorizontalSpace = do
+    void $ AP.takeWhile isHorizontalSpace
+
 sectionParser :: Context -> Parser Section
 sectionParser ctx = do
+    void $ many' blankLine
+
     kind <- takeTill isEndOfLine
+    endOfLine
     case kind of
         "name" -> do
-            skipSpace
-            Name <$> takeTill isEndOfLine
+            skipHorizontalSpace
+            Name <$> takeTill isEndOfLine <* endOfLine
 
         "baseImage" -> do
-            skipSpace
-            BaseImage <$> takeTill isEndOfLine
+            skipHorizontalSpace
+            BaseImage <$> takeTill isEndOfLine <* endOfLine
 
         "buildInstructions" -> do
             bis <- many' $ do
-                skipSpace
-                bik <- takeWhile1 (not . isSpace)
-                skipSpace
+                skipHorizontalSpace
+                bik <- takeWhile1 (not . isSpace) -- a token?
+                skipHorizontalSpace
                 -- trace ("bik " ++ show bik) $ return ()
                 case bik of
-                    "run" -> Run <$> commandParser ctx
+                    "run" -> Run <$> commandParser ctx <* endOfLine
                     "spawn" -> do
-                        string "["
-                        bindings <- sepBy' (bindingParser ctx) (string ",")
-                        string "]"
+                        void $ char '['
+                        bindings <- sepBy' (bindingParser ctx) (char ',')
+                        void $ char ']'
 
-                        Spawn <$> pure bindings <*> (commandParser ctx)
+                        Spawn <$> pure bindings <*> (commandParser ctx) <* endOfLine
                     _ -> fail $ "Unknown build instruction kind " ++ show bik
 
             pure $ BuildInstructions bis
@@ -197,7 +211,7 @@ sectionParser ctx = do
 token :: Context -> Parser Text
 token ctx = do
     skipWhile isHorizontalSpace
-    str <- takeWhile1 (not . isSpace)
+    str <- takeWhile1 (not . isHorizontalSpace)
     pure $ render ctx str
 
 commandParser :: Context -> Parser Cmd
@@ -211,17 +225,17 @@ commandParser ctx@Context{..} = do
 
 bindingParser :: Context -> Parser Binding
 bindingParser ctx = do
-    string "("
-    skipSpace
+    void $ char '('
+    skipHorizontalSpace
     hostPath <- takeTill (==',')
     -- trace (show hostPath) $ return ()
-    skipSpace
-    string ","
-    skipSpace
+    skipHorizontalSpace
+    void $ char ','
+    skipHorizontalSpace
     containerPath <- takeTill (==')')
     -- trace (show containerPath) $ return ()
-    skipSpace
-    string ")"
+    skipHorizontalSpace
+    void $ char ')'
 
     -- trace (show hostPath) $ return ()
     pure $ Binding
@@ -231,25 +245,26 @@ bindingParser ctx = do
 
 appDefParser :: Context -> Parser AppDef
 appDefParser ctx = do
-    skipSpace
+    skipHorizontalSpace
     tok <- token ctx
     -- trace (show tok) $ return ()
     case tok of
         "exec" -> do
-            skipSpace
+            skipHorizontalSpace
             uid <- token ctx
             gid <- token ctx
             cmd <- takeTill isEndOfLine
             Exec <$> pure uid <*> pure gid <*> pure (T.splitOn " " $ T.strip cmd)
+                <* endOfLine
 
         "environment" -> do
             env <- many1' $ do
-                skipSpace
+                skipHorizontalSpace
                 name <- token ctx
-                skipSpace
-                string "\""
+                skipHorizontalSpace
+                void $ char '"'
                 value <- takeTill (=='"')
-                string "\""
+                void $ char '"'
                 endOfLine
 
                 pure (name,value)
@@ -258,9 +273,9 @@ appDefParser ctx = do
 
         "mountPoints" -> do
             mp <- many1 $ do
-                skipSpace
+                skipHorizontalSpace
                 name <- token ctx
-                skipWhile (==' ')
+                skipWhile isHorizontalSpace
                 path <- token ctx
                 c <- peekChar'
                 ro <- if isEndOfLine c
@@ -279,18 +294,20 @@ appDefParser ctx = do
 
         "ports" -> do
             p <- many1 $ do
-                skipSpace
+                skipHorizontalSpace
                 name <- token ctx
-                skipSpace
+                skipHorizontalSpace
                 proto <- takeTill (=='/')
-                string "/"
+                void $ char '/'
                 portNumber <- decimal
                 c <- peekChar'
                 socketActivated <- if isEndOfLine c
                     then pure False
                     else do
-                        sa <- token ctx
+                        skipHorizontalSpace
+                        void $ string "socketActivated"
                         pure True
+                endOfLine
 
                 pure $ (name,proto,portNumber,socketActivated)
 
