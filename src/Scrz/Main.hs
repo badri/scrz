@@ -129,8 +129,6 @@ run (Invocation opts (Build scrzfile)) = do
             Left e -> fail e
             Right x -> pure x
 
-        fail "ok"
-
         -- scrzIO $ print sf
         (oId, _) <- fetchImage (baseImage sf)
 
