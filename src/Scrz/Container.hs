@@ -56,6 +56,7 @@ runContainer cId crm@ContainerRuntimeManifest{..} = do
 
     scrzIO $ putStrLn "Downloading image..."
     (iId, im@ImageManifest{..}) <- fetchImage (imageApp img)
+    scrzIO $ putStrLn $ "Image available with id " <> show iId
 
     bindings <- scrzIO $ buildBindings crm im
 
@@ -72,6 +73,7 @@ runContainer cId crm@ContainerRuntimeManifest{..} = do
                  ++ map T.unpack appExec
 
     -- scrzIO $ putStrLn $ "nspawn command: " ++ show args
+    scrzIO $ putStrLn $ "Starting systemd-nspawn..."
     scrzIO $ exec "systemd-nspawn" args
 
 

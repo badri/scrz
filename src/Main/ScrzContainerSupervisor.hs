@@ -67,7 +67,7 @@ run (Options (Run cId)) = do
             putStrLn $ "Container runtime manifest is not available. Shutting down..."
 
         Right crm@ContainerRuntimeManifest{..} -> do
-            void $ runExceptT $ do
+            res <- runExceptT $ do
                 p <- runContainer cId crm
 
                 let containerPath = "/var/lib/scrz/containers/" ++ Data.UUID.toString crmUUID
@@ -88,7 +88,12 @@ run (Options (Run cId)) = do
 
                 void $ btrfsSubvolDelete containerRootfs
 
-    -- TODO: Clean up 'containerPath'
+                -- TODO: Clean up 'containerPath'
+
+            case res of
+                Left e -> error $ show e
+                Right _ -> return ()
+
 
 parseOptions :: Parser Options
 parseOptions = Options <$> parseCommand
