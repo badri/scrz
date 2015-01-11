@@ -48,6 +48,7 @@ import Scrz.Types
 import Scrz.Log
 import Scrz.Host
 import Scrz.Utils
+import Scrz.Container
 
 
 
@@ -67,6 +68,7 @@ data Command
     | Fetch !Text
     | Clone !Text !Text
     | Build !Text
+    | Exec !Text
     | ListImages
     | ShowWorkspace
     | RemoveWorkspaceImage !Text
@@ -113,6 +115,30 @@ run (Invocation opts (Clone dst src)) = do
         createVolumeSnapshot
             (workspacePath <> dst <> "/rootfs")
             ("/var/lib/scrz/images/" <> iId <> "/rootfs")
+
+    case ret of
+        Left e -> error $ show e
+        Right _ -> return ()
+
+run (Invocation opts (Exec image)) = do
+    ret <- runExceptT $ do
+        uuid <- scrzIO randomIO
+        let crm = ContainerRuntimeManifest
+                { crmUUID = uuid
+                , crmVersion = version 0 1 1 [] []
+                , crmImages = [ Image image "" ]
+                , crmVolumes = []
+                }
+
+        p <- runContainer (ContainerId uuid) crm
+        scrzIO $ putStrLn $ "Waiting for systemd-nspawn to exit... "
+        void $ scrzIO $ wait p
+
+        scrzIO $ putStrLn $ "Application exited, cleaning up..."
+
+        let containerPath = "/var/lib/scrz/containers/" ++ Data.UUID.toString uuid
+            containerRootfs = containerPath ++ "/rootfs"
+        void $ btrfsSubvolDelete containerRootfs
 
     case ret of
         Left e -> error $ show e
@@ -404,6 +430,9 @@ parseCommand = subparser $ mconcat
 
     , command "remove-container"
         (parseRemoveContainer `withInfo` "Remove a container from the etcd runtime configuration")
+
+    , command "exec"
+        (parseExec `withInfo` "Execute an image in a new container")
     ]
 
 
@@ -455,6 +484,10 @@ parseRemoveContainer :: Parser Command
 parseRemoveContainer = RemoveContainer
     <$> argument machineIdRead (metavar "MACHINE")
     <*> argument containerIdRead (metavar "CONTAINER")
+
+parseExec :: Parser Command
+parseExec = Exec
+    <$> argument text (metavar "IMAGE")
 
 withInfo :: Parser a -> String -> ParserInfo a
 withInfo opts desc = info (helper <*> opts) $ progDesc desc

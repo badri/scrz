@@ -33,6 +33,8 @@ import Data.Monoid
 import Options.Applicative
 import Options.Applicative.Types
 
+import Scrz.Container
+
 
 
 data Options = Options !Command
@@ -65,76 +67,28 @@ run (Options (Run cId)) = do
             putStrLn $ "Container runtime manifest is not available. Shutting down..."
 
         Right crm@ContainerRuntimeManifest{..} -> do
-            print crmUUID
+            void $ runExceptT $ do
+                p <- runContainer cId crm
 
-            let containerPath = "/var/lib/scrz/containers/" ++ Data.UUID.toString crmUUID
-                containerRootfs = containerPath ++ "/rootfs"
+                let containerPath = "/var/lib/scrz/containers/" ++ Data.UUID.toString crmUUID
+                    containerRootfs = containerPath ++ "/rootfs"
 
-            createDirectoryIfMissing True containerPath
+                void $ scrzIO $ forkIO $ forever $ do
+                    mbCM <- runExceptT $ lookupContainerManifest cId
+                    case mbCM of
+                        Right _ -> threadDelay $ 1000 * 1000
+                        Left _ -> do
+                            putStrLn $ "Container no longer active, killing..."
+                            kill p
 
-            let img = head crmImages
-            fir <- runExceptT $ fetchImage (imageApp img)
-            (iId, im@ImageManifest{..}) <- case fir of
-                Left e -> error $ show e
-                Right x -> return x
+                scrzIO $ putStrLn $ "Waiting for systemd-nspawn to exit... "
+                void $ scrzIO $ wait p
 
-            bindings <- buildBindings crm im
+                scrzIO $ putStrLn $ "Application exited, cleaning up..."
 
-            void $ runExceptT $ btrfsSubvolSnapshot
-                ("/var/lib/scrz/images/" <> T.unpack iId <> "/rootfs")
-                (containerRootfs)
+                void $ btrfsSubvolDelete containerRootfs
 
-            let App{..} = fromJust imApp
-
-            let args = [ "-D", containerRootfs, "-M", Data.UUID.toString crmUUID, "-j"
-                       ] ++ map (\(src, path) -> "--bind=" <> T.unpack src <> ":" <> T.unpack path) bindings
-                         ++ map (\(k, v) -> "--setenv=" <> T.unpack k <> ":" <> T.unpack v) (M.toList appEnvironment)
-                         ++ ["--"]
-                         ++ map T.unpack appExec
-
-            p <- exec "systemd-nspawn" args
-
-            void $ forkIO $ forever $ do
-                mbCM <- runExceptT $ lookupContainerManifest cId
-                case mbCM of
-                    Right _ -> threadDelay $ 1000 * 1000
-                    Left _ -> do
-                        putStrLn $ "Container no longer active, killing..."
-                        kill p
-
-            putStrLn $ "Waiting for systemd-nspawn to exit... "
-            void $ wait p
-
-            putStrLn $ "Application exited, cleaning up..."
-
-            void $ runExceptT $ btrfsSubvolDelete containerRootfs
-
-            -- TODO: Clean up 'containerPath'
-
-
-buildBindings :: ContainerRuntimeManifest -> ImageManifest -> IO [(Text, Text)]
-buildBindings crm@ContainerRuntimeManifest{..} ImageManifest{..} = do
-    let Just App{..} = imApp
-
-    -- imMountPoints are the mount points which the container manifest must
-    -- fulfill.
-    --
-    -- crmVolumes defines how these mount points are fulfilled.
-
-    forM appMountPoints $ \MountPoint{..} -> do
-        mbVol <- findMountPointVolume crm mpName
-        case mbVol of
-            Nothing -> error $ "Could not satisfy mount point " ++ show mpName
-            Just Volume{..} -> do
-                let HostVolumeSource HostVolume{..} = volSource
-                return (hvSource, mpPath)
-
-
-findMountPointVolume :: ContainerRuntimeManifest -> Text -> IO (Maybe Volume)
-findMountPointVolume ContainerRuntimeManifest{..} mp = do
-    return $ (flip find) crmVolumes $ \Volume{..} ->
-        mp `elem` volFulfills
-
+    -- TODO: Clean up 'containerPath'
 
 parseOptions :: Parser Options
 parseOptions = Options <$> parseCommand
