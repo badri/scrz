@@ -10,6 +10,8 @@ import Control.Monad.Except
 import Control.Exception
 import Control.Concurrent
 
+import Network.BSD (getHostName)
+
 import Scrz.Log
 import Scrz.Utils
 import Scrz.Etcd
@@ -18,7 +20,7 @@ import Scrz.Types
 import Network.Etcd
 
 import Data.Monoid
-import Data.Maybe
+-- import Data.Maybe
 import Data.UUID
 import qualified Data.Text as T
 import Options.Applicative
@@ -41,7 +43,7 @@ main = do
         client <- scrzIO $ createClient ["http://localhost:4001"]
 
         mId <- machineId
-        hostName <- fromMaybe "localhost" <$> fullyQualifiedDomainName
+        hostName <- T.pack <$> scrzIO getHostName -- fromMaybe "localhost" <$> fullyQualifiedDomainName
 
         updateMachineDescription client $ Machine mId hostName
 
