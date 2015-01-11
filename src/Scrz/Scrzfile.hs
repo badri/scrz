@@ -211,7 +211,7 @@ sectionParser ctx = do
 token :: Context -> Parser Text
 token ctx = do
     skipWhile isHorizontalSpace
-    str <- takeWhile1 (not . isHorizontalSpace)
+    str <- takeWhile1 (not . isSpace)
     pure $ render ctx str
 
 commandParser :: Context -> Parser Cmd
@@ -245,6 +245,7 @@ bindingParser ctx = do
 
 appDefParser :: Context -> Parser AppDef
 appDefParser ctx = do
+    void $ many blankLine
     skipHorizontalSpace
     tok <- token ctx
     -- trace (show tok) $ return ()
@@ -258,6 +259,7 @@ appDefParser ctx = do
                 <* endOfLine
 
         "environment" -> do
+            endOfLine
             env <- many1' $ do
                 skipHorizontalSpace
                 name <- token ctx
@@ -272,6 +274,7 @@ appDefParser ctx = do
             pure $ Environment env
 
         "mountPoints" -> do
+            endOfLine
             mp <- many1 $ do
                 skipHorizontalSpace
                 name <- token ctx
@@ -293,6 +296,7 @@ appDefParser ctx = do
             pure $ MountPoints mp
 
         "ports" -> do
+            endOfLine
             p <- many1 $ do
                 skipHorizontalSpace
                 name <- token ctx
