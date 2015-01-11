@@ -24,6 +24,7 @@ import Data.Maybe
 import qualified Data.ByteString.Lazy as LB
 import Data.Text (Text)
 import qualified Data.Text as T
+import qualified Data.Map as M
 import Data.Text.Encoding
 import Data.UUID
 import Data.List
@@ -87,6 +88,7 @@ run (Options (Run cId)) = do
 
             let args = [ "-D", containerRootfs, "-M", Data.UUID.toString crmUUID, "-j"
                        ] ++ map (\(src, path) -> "--bind=" <> T.unpack src <> ":" <> T.unpack path) bindings
+                         ++ map (\(k, v) -> "--setenv=" <> T.unpack k <> ":" <> T.unpack v) (M.toList appEnvironment)
                          ++ ["--"]
                          ++ map T.unpack appExec
 
@@ -103,7 +105,11 @@ run (Options (Run cId)) = do
             putStrLn $ "Waiting for systemd-nspawn to exit... "
             void $ wait p
 
+            putStrLn $ "Application exited, cleaning up..."
+
             void $ runExceptT $ btrfsSubvolDelete containerRootfs
+
+            -- TODO: Clean up 'containerPath'
 
 
 buildBindings :: ContainerRuntimeManifest -> ImageManifest -> IO [(Text, Text)]
