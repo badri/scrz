@@ -98,14 +98,14 @@ fetchImage name = do
     -- throwError $ UInternalError ""
 
     let tmp = "/var/lib/scrz/tmp"
-    liftIO $ do
+    scrzIO $ do
         createDirectoryIfMissing True tmp
         createDirectoryIfMissing True $ "/var/lib/scrz/uim"
         createDirectoryIfMissing True $ "/var/lib/scrz/objects"
         createDirectoryIfMissing True $ "/var/lib/scrz/images"
 
     -- Map the URL to the ObjectId of the Image.
-    UIMEntry{..} <- liftIO $ do
+    UIMEntry{..} <- scrzIO $ do
         let oh = hashSHA512 $ encode url
         exists <- doesFileExist $ "/var/lib/scrz/uim/sha512-" <> oh
         if exists
@@ -138,15 +138,15 @@ fetchImage name = do
 
     -- Unpack the image into a btrfs volume.
     res <- do
-        de <- liftIO $ doesDirectoryExist $ "/var/lib/scrz/images/" <> T.unpack rObjectId
+        de <- scrzIO $ doesDirectoryExist $ "/var/lib/scrz/images/" <> T.unpack rObjectId
         unless de $ do
-            liftIO $ createDirectoryIfMissing True $ "/var/lib/scrz/images/" <> T.unpack rObjectId
+            scrzIO $ createDirectoryIfMissing True $ "/var/lib/scrz/images/" <> T.unpack rObjectId
             btrfsSubvolCreate $ "/var/lib/scrz/images/" <> T.unpack rObjectId <> "/rootfs"
-            liftIO $ unpackTarball
+            scrzIO $ unpackTarball
                 ("/var/lib/scrz/objects/" <> T.unpack rObjectId)
                 ("/var/lib/scrz/images/" <> T.unpack rObjectId)
 
-        mf <- liftIO $ LB.readFile $ "/var/lib/scrz/images/" <> T.unpack rObjectId <> "/manifest"
+        mf <- scrzIO $ LB.readFile $ "/var/lib/scrz/images/" <> T.unpack rObjectId <> "/manifest"
         return $ eitherDecode mf
 
     case res of

@@ -126,8 +126,8 @@ containerIdRead = ReadM $ do
 lookupContainerManifest :: ContainerId -> Scrz ContainerRuntimeManifest
 lookupContainerManifest cId = do
     mId <- machineId
-    client <- liftIO $ createClient localEtcdServer
-    mbNode <- liftIO $ get client (containerManifestKey mId cId)
+    client <- scrzIO $ createClient localEtcdServer
+    mbNode <- scrzIO $ get client (containerManifestKey mId cId)
     case mbNode of
         Nothing -> throwError $ InternalError "Node not found"
         Just node -> case eitherDecode (rValueLB node) of
