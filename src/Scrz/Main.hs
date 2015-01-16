@@ -68,7 +68,7 @@ data Command
     | Fetch !Text
     | Clone !Text !Text
     | Build !Text
-    | Exec !Text
+    | Exec ![Text] !Text
     | ListImages
     | ShowWorkspace
     | RemoveWorkspaceImage !Text
@@ -120,14 +120,21 @@ run (Invocation opts (Clone dst src)) = do
         Left e -> error $ show e
         Right _ -> return ()
 
-run (Invocation opts (Exec image)) = do
+run (Invocation opts (Exec bindings image)) = do
     ret <- runExceptT $ do
         uuid <- scrzIO randomIO
+        volumes <- forM bindings $ \binding -> do
+            case T.splitOn ":" binding of
+                source : fulfills : [] ->
+                    return $ Volume [fulfills] $ HostVolumeSource $
+                        HostVolume source False
+                _ -> fail $ "Could not parse binding " <> T.unpack binding
+
         let crm = ContainerRuntimeManifest
                 { crmUUID = uuid
                 , crmVersion = version 0 1 1 [] []
                 , crmImages = [ Image image "" ]
-                , crmVolumes = []
+                , crmVolumes = volumes
                 }
 
         p <- runContainer (ContainerId uuid) crm
@@ -496,7 +503,8 @@ parseRemoveContainer = RemoveContainer
 
 parseExec :: Parser Command
 parseExec = Exec
-    <$> argument text (metavar "IMAGE")
+    <$> many (option text (long "bind" <> metavar "SOURCE:FULFILLS"))
+    <*> argument text (metavar "IMAGE")
 
 withInfo :: Parser a -> String -> ParserInfo a
 withInfo opts desc = info (helper <*> opts) $ progDesc desc
