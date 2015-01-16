@@ -15,6 +15,9 @@ module Scrz.Image
 
   , fetchImage
 
+  , hashSHA512
+  , UIMEntry(..)
+
   ) where
 
 import           Data.Aeson
@@ -107,6 +110,7 @@ fetchImage name = do
     -- Map the URL to the ObjectId of the Image.
     UIMEntry{..} <- scrzIO $ do
         let oh = hashSHA512 $ encode url
+        -- scrzIO $ print oh
         exists <- doesFileExist $ "/var/lib/scrz/uim/sha512-" <> oh
         if exists
             then do

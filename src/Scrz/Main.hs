@@ -11,7 +11,7 @@ import Control.Monad.Reader
 import Options.Applicative
 import Options.Applicative.Types
 
-import System.Directory (renameFile, getDirectoryContents, copyFile)
+import System.Directory (renameFile, getDirectoryContents, copyFile, createDirectoryIfMissing)
 import System.Posix.Files
 import Network.Etcd
 import Data.Maybe
@@ -168,7 +168,7 @@ run (Invocation opts (Build scrzfile)) = do
             ("/var/lib/scrz/images/" <> oId <> "/rootfs")
 
         -- scrzIO $ putStrLn "Executing build instructions"
-        forM (buildInstructions sf) $ \bi -> do
+        forM_ (buildInstructions sf) $ \bi -> do
             scrzIO $ do
                 -- putStrLn "Executing..."
                 -- print bi
@@ -206,6 +206,15 @@ run (Invocation opts (Build scrzfile)) = do
 
         objId <- packImage imageManifest (workspacePath <> wsId)
         scrzIO $ T.putStrLn objId
+
+        let url = "https://" <> objId <> ".aci"
+            ir  = UIMEntry url objId
+            oh  = hashSHA512 $ encode url
+            irb = encode ir
+
+        -- Write out the UIM entry.
+        scrzIO $ createDirectoryIfMissing True $ "/var/lib/scrz/uim"
+        scrzIO $ LB.writeFile ("/var/lib/scrz/uim/sha512-" <> oh) irb
 
         btrfsSubvolDelete
             (T.unpack $ workspacePath <> wsId <> "/rootfs")
