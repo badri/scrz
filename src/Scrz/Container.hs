@@ -50,6 +50,11 @@ runContainer cId crm@ContainerRuntimeManifest{..} = do
     let containerPath = "/var/lib/scrz/containers/" ++ Data.UUID.toString crmUUID
         containerRootfs = containerPath ++ "/rootfs"
 
+    -- If the rootfs directory exists, delete it first
+    de <- scrzIO $ doesDirectoryExist containerRootfs
+    when de $ do
+        void $ btrfsSubvolDelete containerRootfs
+
     scrzIO $ createDirectoryIfMissing True containerPath
 
     let img = head crmImages
